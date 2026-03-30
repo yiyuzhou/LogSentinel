@@ -1,0 +1,22 @@
+{
+  "profiles": {
+    "default": {
+      "name": "默认配置",
+      "video": {
+        "host": "localhost",
+        "port": 3306,
+        "database": "videoai",
+        "user": "your-username",
+        "password": "your-encrypted-password"
+      },
+      "ssh_config": {
+        "hostname": "localhost",
+        "port": 22,
+        "username": "your-ssh-username",
+        "password": "your-encrypted-password",
+        "log_dir": "/path/to/logs"
+      }
+    }
+  },
+  "active_profile": "default"
+}

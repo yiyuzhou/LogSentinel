@@ -1,0 +1,15 @@
+# Flask Web 框架
+Flask==3.0.0
+Flask-CORS==4.0.0
+
+# 数据库连接
+mysql-connector-python==8.2.0
+
+# SSH 远程连接
+paramiko==3.4.0
+
+# 系统监控
+psutil==5.9.7
+
+# 工具库
+Werkzeug==3.0.1
