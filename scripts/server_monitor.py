@@ -305,7 +305,6 @@ SERVER_MONITOR_TEMPLATE = """
             <a href="/mps" class="menu-item" data-page="mps">
                 <span class="icon">🐧</span>
                 <span class="label">腾讯 MPS</span>
-                <span class="menu-badge">开发中</span>
             </a>
             <div class="menu-section" style="margin-top: 20px;">系统监控</div>
             <a href="/logs" class="menu-item" data-page="logs">
@@ -315,6 +314,10 @@ SERVER_MONITOR_TEMPLATE = """
             <a href="/server-monitor" class="menu-item active" data-page="server-monitor">
                 <span class="icon">🖥️</span>
                 <span class="label">服务器监控</span>
+            </a>
+            <a href="/db-monitor" class="menu-item" data-page="db-monitor">
+                <span class="icon">🗄️</span>
+                <span class="label">数据库监控</span>
             </a>
             <div class="menu-section" style="margin-top: 20px;">系统</div>
             <a href="/settings" class="menu-item" data-page="settings">

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(netstat -ano)",
+      "Bash(curl -s \"http://localhost:5000/api/data\")",
+      "Bash(curl:*)",
+      "Bash(tasklist:*)",
+      "Bash(powershell -Command \"Get-Process -Id 27784 | Select-Object ProcessName, Path\")",
+      "Bash(powershell -Command \"Stop-Process -Id 27784 -Force\")"
+    ]
+  }
+}

@@ -1,99 +1,63 @@
 @echo off
 chcp 65001 >nul
-title 视频任务运维系统 - 启动脚本
+title Video Task System - Starter
 
 echo ========================================
-echo     视频任务运维系统
 echo     Video Task Sentinel v1.0.0
 echo ========================================
 echo.
 
-:: 检查 Python 是否安装
+echo [Check] Checking Python...
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [错误] 未检测到 Python，请先安装 Python 3.8+
-    echo 下载地址：https://www.python.org/downloads/
+    echo [ERROR] Python not found!
+    echo Please install Python 3.8+ from https://www.python.org/downloads/
     pause
     exit /b 1
 )
 
-echo [✓] Python 已安装
+echo [OK] Python found
 python --version
 echo.
 
-:: 进入脚本目录
-cd /d %~dp0scripts
+set SCRIPT_DIR=%~dp0
+cd /d "%SCRIPT_DIR%scripts"
 
-:: 检查依赖是否完整
-echo [检查] 正在检查依赖...
-python -c "import flask" >nul 2>&1
+echo [Check] Checking dependencies...
+python -c "import flask,flask_cors,mysql.connector,paramiko,psutil" >nul 2>&1
 if errorlevel 1 (
-    echo [安装] 正在安装 Flask...
-    pip install flask -q
+    echo [Install] Installing dependencies...
+    pip install flask flask-cors mysql-connector-python paramiko psutil -q
 )
-
-python -c "import flask_cors" >nul 2>&1
-if errorlevel 1 (
-    echo [安装] 正在安装 Flask-CORS...
-    pip install flask-cors -q
-)
-
-python -c "import mysql.connector" >nul 2>&1
-if errorlevel 1 (
-    echo [安装] 正在安装 MySQL Connector...
-    pip install mysql-connector-python -q
-)
-
-python -c "import paramiko" >nul 2>&1
-if errorlevel 1 (
-    echo [安装] 正在安装 Paramiko...
-    pip install paramiko -q
-)
-
-python -c "import psutil" >nul 2>&1
-if errorlevel 1 (
-    echo [安装] 正在安装 Psutil...
-    pip install psutil -q
-)
-
-echo [✓] 依赖检查完成
+echo [OK] Dependencies ready
 echo.
-
-:: 检查配置文件
-cd ..
-if not exist "config\database.json" (
-    echo [警告] 未找到配置文件，正在创建...
-    if exist "config\database.json.example" (
-        copy "config\database.json.example" "config\database.json"
-        echo.
-        echo [提示] 请编辑 config\database.json 配置数据库信息
-        echo 按任意键继续启动（使用默认配置可能会报错）...
-        pause
-    ) else (
-        echo [错误] 未找到配置模板文件
-        pause
-        exit /b 1
-    )
-)
-
-cd scripts
 
 echo ========================================
-echo     正在启动服务...
+echo     Starting Server...
 echo ========================================
 echo.
-echo 访问地址:
-echo   首页（内部译制）: http://localhost:5000/
-echo   腾讯 MPS:        http://localhost:5000/mps
-echo   日志监控：http://localhost:5000/logs
-echo   服务器监控：http://localhost:5000/server-monitor
-echo   系统设置：http://localhost:5000/settings
+echo Access URLs:
+echo   Dashboard: http://localhost:5000/
+echo   Tencent MPS: http://localhost:5000/mps
+echo   Logs: http://localhost:5000/logs
+echo   Server Monitor: http://localhost:5000/server-monitor
+echo   Settings: http://localhost:5000/settings
 echo.
-echo 按 Ctrl+C 可停止服务
+echo Press Ctrl+C to stop
 echo ========================================
 echo.
 
-:: 启动服务
 python video_task_dashboard.py
+
+if errorlevel 1 (
+    echo.
+    echo [ERROR] Server failed to start!
+    echo Possible reasons:
+    echo 1. Port 5000 is in use
+    echo 2. Database connection failed
+    echo 3. Config file error
+    pause
+    exit /b 1
+)
 
 pause

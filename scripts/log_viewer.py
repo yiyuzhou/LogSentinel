@@ -499,6 +499,10 @@ LOG_VIEWER_TEMPLATE = """
                 <span class="icon">🖥️</span>
                 <span class="label">服务器监控</span>
             </a>
+            <a href="/db-monitor" class="menu-item" data-page="db-monitor">
+                <span class="icon">🗄️</span>
+                <span class="label">数据库监控</span>
+            </a>
             <div class="menu-section" style="margin-top: 20px;">系统</div>
             <a href="/settings" class="menu-item" data-page="settings">
                 <span class="icon">⚙️</span>
@@ -1192,7 +1196,7 @@ LOG_VIEWER_TEMPLATE = """
                 toggleIcon.style.transform = 'rotate(180deg)';
             }
             
-            let hoverTimeout = null;
+            // 鼠标悬停展开（仅当sidebar已折叠时）
             sidebar.addEventListener('mouseenter', function() {
                 if (sidebar.classList.contains('collapsed')) {
                     sidebar.classList.remove('collapsed');
@@ -1200,18 +1204,20 @@ LOG_VIEWER_TEMPLATE = """
                     toggleIcon.style.transform = 'rotate(0deg)';
                 }
             });
-            
-            sidebar.addEventListener('mouseleave', function() {
-                if (savedState === 'true') {
-                    hoverTimeout = setTimeout(function() {
-                        sidebar.classList.add('collapsed');
-                        mainWrapper.classList.add('collapsed-margin');
-                        toggleIcon.style.transform = 'rotate(180deg)';
-                    }, 200);
+
+            // 点击主内容区域折叠sidebar（仅当sidebar展开时）
+            mainWrapper.addEventListener('click', function() {
+                if (!sidebar.classList.contains('collapsed')) {
+                    sidebar.classList.add('collapsed');
+                    mainWrapper.classList.add('collapsed-margin');
+                    toggleIcon.style.transform = 'rotate(180deg)';
+                    localStorage.setItem('sidebarCollapsed', 'true');
                 }
             });
-            
-            toggle.addEventListener('click', function() {
+
+            // 点击切换按钮
+            toggle.addEventListener('click', function(e) {
+                e.stopPropagation(); // 阻止事件冒泡到mainWrapper
                 const isCollapsed = sidebar.classList.toggle('collapsed');
                 mainWrapper.classList.toggle('collapsed-margin');
                 toggleIcon.style.transform = isCollapsed ? 'rotate(180deg)' : 'rotate(0deg)';

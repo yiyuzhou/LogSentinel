@@ -33,6 +33,25 @@ DEFAULT_CONFIG = {
                 "username": "ubuntu",
                 "password": "",  # 加密存储
                 "log_dir": "/home/ubuntu/workspace/logs/translator"
+            },
+            "server_monitor_ssh": {
+                "hostname": "101.126.91.130",
+                "port": 22,
+                "username": "ubuntu",
+                "password": ""  # 加密存储
+            },
+            "db_monitor": {
+                "host": "101.126.91.130",
+                "port": 3306,
+                "database": "information_schema",
+                "user": "yiyuzhou",
+                "password": ""  # 加密存储
+            },
+            "server_data_source": {
+                "host": "101.126.91.130",
+                "port": 22,
+                "username": "ubuntu",
+                "password": ""  # 加密存储
             }
         }
     }
@@ -297,6 +316,62 @@ def get_ssh_config():
     }
 
 
+def get_db_monitor_config(profile_name=None):
+    """获取数据库监控配置（从当前激活的 profile 中获取）"""
+    config = load_config()
+    actual_profile_name = profile_name or config.get("active_profile", "default")
+    profile = config.get("profiles", {}).get(actual_profile_name, config.get("profiles", {}).get("default"))
+    
+    if not profile:
+        return {
+            'host': 'localhost',
+            'port': 3306,
+            'database': 'information_schema',
+            'user': 'root',
+            'password': ''
+        }
+    
+    # 从 profile 中获取 db_monitor 配置
+    db_monitor = profile.get("db_monitor", {})
+    
+    return {
+        'host': db_monitor.get('host', 'localhost'),
+        'port': db_monitor.get('port', 3306),
+        'database': db_monitor.get('database', 'information_schema'),
+        'user': db_monitor.get('user', 'root'),
+        'password': decode_password(db_monitor.get('password', ''))
+    }
+
+
+def save_db_monitor_config(db_monitor_config, profile_name=None):
+    """保存数据库监控配置到指定的 profile（或当前激活的 profile）"""
+    config = load_config()
+    
+    # 如果没有指定 profile，使用当前激活的 profile
+    if profile_name is None:
+        profile_name = config.get("active_profile", "default")
+    
+    # 确保 profiles 存在
+    if "profiles" not in config:
+        config["profiles"] = {}
+    
+    # 确保当前 profile 存在
+    if profile_name not in config["profiles"]:
+        config["profiles"][profile_name] = {"name": profile_name, "video": {}}
+    
+    # 保存 db_monitor 配置到当前 profile
+    config["profiles"][profile_name]["db_monitor"] = {
+        'host': db_monitor_config.get('host', 'localhost'),
+        'port': db_monitor_config.get('port', 3306),
+        'database': db_monitor_config.get('database', 'information_schema'),
+        'user': db_monitor_config.get('user', 'root'),
+        'password': encode_password(db_monitor_config.get('password', ''))
+    }
+    
+    save_config(config)
+    return True
+
+
 def save_ssh_config(ssh_config, profile_name=None):
     """保存 SSH 配置到指定的 profile（或当前激活的 profile）"""
     config = load_config()
@@ -324,6 +399,59 @@ def save_ssh_config(ssh_config, profile_name=None):
     
     # 向后兼容：同时保留全局 ssh_config（如果存在）
     # 新代码不再使用全局 ssh_config，但保留以兼容旧版本
+    
+    save_config(config)
+    return True
+
+
+def get_server_data_source_config(profile_name=None):
+    """获取服务器数据源配置（从当前激活的 profile 中获取）"""
+    config = load_config()
+    actual_profile_name = profile_name or config.get("active_profile", "default")
+    profile = config.get("profiles", {}).get(actual_profile_name, config.get("profiles", {}).get("default"))
+    
+    if not profile:
+        return {
+            'host': 'localhost',
+            'port': 22,
+            'username': 'root',
+            'password': ''
+        }
+    
+    # 从 profile 中获取 server_data_source 配置
+    server_data_source = profile.get("server_data_source", {})
+    
+    return {
+        'host': server_data_source.get('host', 'localhost'),
+        'port': server_data_source.get('port', 22),
+        'username': server_data_source.get('username', 'root'),
+        'password': decode_password(server_data_source.get('password', ''))
+    }
+
+
+def save_server_data_source_config(server_data_source_config, profile_name=None):
+    """保存服务器数据源配置到指定的 profile（或当前激活的 profile）"""
+    config = load_config()
+    
+    # 如果没有指定 profile，使用当前激活的 profile
+    if profile_name is None:
+        profile_name = config.get("active_profile", "default")
+    
+    # 确保 profiles 存在
+    if "profiles" not in config:
+        config["profiles"] = {}
+    
+    # 确保当前 profile 存在
+    if profile_name not in config["profiles"]:
+        config["profiles"][profile_name] = {"name": profile_name, "video": {}}
+    
+    # 保存 server_data_source 配置到当前 profile
+    config["profiles"][profile_name]["server_data_source"] = {
+        'host': server_data_source_config.get('host', 'localhost'),
+        'port': server_data_source_config.get('port', 22),
+        'username': server_data_source_config.get('username', 'root'),
+        'password': encode_password(server_data_source_config.get('password', ''))
+    }
     
     save_config(config)
     return True
@@ -365,6 +493,59 @@ def test_ssh_connection(ssh_config):
         return {'success': True, 'message': 'SSH 连接成功，日志目录可访问'}
     except paramiko.AuthenticationException:
         return {'success': False, 'message': 'SSH 认证失败：用户名或密码错误'}
+    except paramiko.SSHException as e:
+        return {'success': False, 'message': f'SSH 连接错误：{str(e)}'}
+    except Exception as e:
+        return {'success': False, 'message': f'连接失败：{str(e)}'}
+
+
+def test_db_monitor_connection(db_monitor_config):
+    """测试数据库监控连接"""
+    try:
+        db_config = {
+            'host': db_monitor_config.get('host', 'localhost'),
+            'port': db_monitor_config.get('port', 3306),
+            'database': db_monitor_config.get('database', 'information_schema'),
+            'user': db_monitor_config.get('user', 'root'),
+            'password': db_monitor_config.get('password', ''),
+            'charset': 'utf8mb4',
+            'connect_timeout': 5,
+            'connection_timeout': 5
+        }
+        conn = mysql.connector.connect(**db_config)
+        
+        # 测试是否能访问 information_schema
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM tables")
+        count = cursor.fetchone()[0]
+        cursor.close()
+        conn.close()
+        
+        return {'success': True, 'message': f'数据库监控连接成功，可访问 {count} 个表'}
+    except mysql.connector.errors.ProgrammingError as e:
+        return {'success': False, 'message': f'数据库访问错误：{str(e)}'}
+    except mysql.connector.errors.OperationalError as e:
+        return {'success': False, 'message': f'数据库操作错误：{str(e)}'}
+    except Exception as e:
+        return {'success': False, 'message': f'连接失败：{str(e)}'}
+
+
+def test_server_data_source_connection(server_data_source_config):
+    """测试服务器数据源连接（SSH 连接测试）"""
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(
+            hostname=server_data_source_config.get('host', ''),
+            port=server_data_source_config.get('port', 22),
+            username=server_data_source_config.get('username', ''),
+            password=server_data_source_config.get('password', ''),
+            timeout=10
+        )
+        client.close()
+        return {'success': True, 'message': '服务器数据源连接成功'}
+    except paramiko.AuthenticationException:
+        return {'success': False, 'message': '认证失败：用户名或密码错误'}
     except paramiko.SSHException as e:
         return {'success': False, 'message': f'SSH 连接错误：{str(e)}'}
     except Exception as e:
@@ -426,8 +607,33 @@ SETTINGS_TEMPLATE = """
         .settings-header h1 { font-size: 24px; font-weight: 600; display: flex; align-items: center; gap: 12px; }
         .settings-header p { color: var(--text-secondary); margin-top: 8px; }
         
-        .settings-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 24px; }
-        .settings-card h2 { font-size: 18px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+        /* 双栏布局 */
+        .settings-layout { display: grid; grid-template-columns: 280px 1fr; gap: 24px; }
+        
+        /* 左侧配置列表 */
+        .config-list-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; height: fit-content; }
+        .config-list-card h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+        .config-list { list-style: none; padding: 0; margin: 0; }
+        .config-list-item { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; margin-bottom: 8px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+        .config-list-item:hover { background: var(--bg-hover); border-color: var(--primary); }
+        .config-list-item.active { background: linear-gradient(135deg, rgba(37, 99, 235, 0.15) 0%, rgba(29, 78, 216, 0.1) 100%); border-color: var(--primary); }
+        .config-list-item-name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+        .config-list-item-info { font-size: 12px; color: var(--text-secondary); }
+        .config-list-item-actions { display: flex; gap: 6px; margin-top: 8px; }
+        .config-list-btn { background: none; border: none; color: var(--text-secondary); font-size: 14px; cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: all 0.2s; }
+        .config-list-btn:hover { background: var(--bg-card); color: var(--text-primary); }
+        .config-list-btn.delete:hover { color: var(--danger); }
+        .add-config-btn { width: 100%; margin-top: 12px; padding: 10px; background: var(--bg-dark); border: 1px dashed var(--border); border-radius: 8px; color: var(--text-secondary); font-size: 14px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px; }
+        .add-config-btn:hover { background: var(--bg-hover); border-color: var(--primary); color: var(--primary); }
+        
+        /* 右侧配置详情 */
+        .config-detail-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+        .config-detail-header { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+        .config-detail-header h2 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+        .config-detail-header p { color: var(--text-secondary); font-size: 13px; }
+        
+        .settings-card { background: var(--bg-dark); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+        .settings-card h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
         
         .form-group { margin-bottom: 16px; }
         .form-group label { display: block; color: var(--text-secondary); font-size: 13px; margin-bottom: 6px; font-weight: 500; }
@@ -496,6 +702,10 @@ SETTINGS_TEMPLATE = """
                 <span class="icon">🖥️</span>
                 <span class="label">服务器监控</span>
             </a>
+            <a href="/db-monitor" class="menu-item" data-page="db-monitor">
+                <span class="icon">🗄️</span>
+                <span class="label">数据库监控</span>
+            </a>
             <div class="menu-section" style="margin-top: 20px;">系统</div>
             <a href="/settings" class="menu-item active" data-page="settings">
                 <span class="icon">⚙️</span>
@@ -519,22 +729,36 @@ SETTINGS_TEMPLATE = """
                 <p>配置数据库连接和数据源</p>
             </div>
             
-            <!-- 配置管理 -->
-            <div class="settings-card">
-                <h2>📁 配置管理</h2>
-                <div class="profile-selector">
-                    <label>当前配置：</label>
-                    <select id="profileSelect" onchange="switchProfile()">
-                        <option value="default">默认配置</option>
-                    </select>
-                    <div class="profile-actions">
-                        <button class="btn btn-secondary" onclick="newProfile()">➕ 新建配置</button>
-                        <button class="btn btn-secondary" onclick="deleteProfile()" id="deleteProfileBtn" disabled>🗑️ 删除配置</button>
-                    </div>
+            <!-- 双栏布局 -->
+            <div class="settings-layout">
+                <!-- 左侧配置列表 -->
+                <div class="config-list-card">
+                    <h2>📁 配置列表</h2>
+                    <ul class="config-list" id="configList"></ul>
+                    <button class="add-config-btn" onclick="newProfile()">➕ 新建配置</button>
                 </div>
-            </div>
-            
-            <!-- 视频任务数据源（内部译制 & 腾讯 MPS 共用） -->
+                
+                <!-- 右侧配置详情 -->
+                <div class="config-detail-card">
+                    <div class="config-detail-header">
+                        <h2>配置详情</h2>
+                        <p>当前配置：<span id="currentProfileName">默认配置</span></p>
+                    </div>
+                    
+                    <!-- 配置选择器（移到详情区顶部） -->
+                    <div class="profile-selector" style="margin-bottom: 20px;">
+                        <label>切换配置：</label>
+                        <select id="profileSelect" onchange="switchProfile()">
+                            <option value="default">默认配置</option>
+                        </select>
+                        <div class="profile-actions">
+                            <button class="btn btn-secondary" onclick="deleteProfile()" id="deleteProfileBtn" disabled>🗑️ 删除配置</button>
+                            <button class="btn btn-primary" onclick="saveSettings()">💾 保存配置</button>
+                            <button class="btn btn-secondary" onclick="loadSettings()">🔄 重置</button>
+                        </div>
+                    </div>
+                    
+                    <!-- 视频任务数据源（内部译制 & 腾讯 MPS 共用） -->
             <div class="settings-card">
                 <h2>🎬 视频任务数据源 <span style="font-size:12px;color:var(--text-secondary);font-weight:normal;margin-left:10px;">（内部译制 & 腾讯 MPS 共用）</span></h2>
                 <div class="form-row">
@@ -600,11 +824,68 @@ SETTINGS_TEMPLATE = """
                 </div>
             </div>
             
-            <!-- 保存按钮 -->
+            <!-- 数据库监控配置 -->
             <div class="settings-card">
-                <div class="form-actions" style="border-top: none; padding-top: 0; margin-top: 0;">
-                    <button class="btn btn-primary" onclick="saveSettings()">💾 保存配置</button>
-                    <button class="btn btn-secondary" onclick="loadSettings()">🔄 重置</button>
+                <h2>🗄️ 数据库监控配置</h2>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>MySQL 主机</label>
+                        <input type="text" id="dbMonitorHost" placeholder="例如：101.126.91.130">
+                    </div>
+                    <div class="form-group">
+                        <label>端口</label>
+                        <input type="number" id="dbMonitorPort" placeholder="3306" value="3306">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>数据库名</label>
+                        <input type="text" id="dbMonitorDatabase" placeholder="例如：information_schema">
+                    </div>
+                    <div class="form-group">
+                        <label>用户名</label>
+                        <input type="text" id="dbMonitorUser" placeholder="例如：root">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" id="dbMonitorPassword" placeholder="请输入数据库密码">
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-success" onclick="testDbMonitorConnection()">🔌 测试连接</button>
+                    <span id="dbMonitorStatus" class="connection-status" style="display: none;"></span>
+                </div>
+            </div>
+            
+            <!-- 服务器数据源配置 -->
+            <div class="settings-card">
+                <h2>🖥️ 服务器数据源配置</h2>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>服务器 IP</label>
+                        <input type="text" id="serverDataSourceHost" placeholder="例如：101.126.91.130">
+                    </div>
+                    <div class="form-group">
+                        <label>端口</label>
+                        <input type="number" id="serverDataSourcePort" placeholder="22" value="22">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>用户名</label>
+                        <input type="text" id="serverDataSourceUser" placeholder="例如：ubuntu">
+                    </div>
+                    <div class="form-group">
+                        <label>密码</label>
+                        <input type="password" id="serverDataSourcePassword" placeholder="请输入服务器密码">
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-success" onclick="testServerDataSourceConnection()">🔌 测试连接</button>
+                    <span id="serverDataSourceStatus" class="connection-status" style="display: none;"></span>
+                </div>
+            </div>
+            
                 </div>
             </div>
         </div>
@@ -616,6 +897,50 @@ SETTINGS_TEMPLATE = """
     <script>
         let currentConfig = null;
         let profiles = {};
+        
+        // 渲染左侧配置列表
+        function renderConfigList() {
+            const configList = document.getElementById('configList');
+            const profileSelect = document.getElementById('profileSelect');
+            const activeProfile = profileSelect ? profileSelect.value : 'default';
+            
+            if (!configList) {
+                console.error('[renderConfigList] 错误：configList 元素不存在');
+                return;
+            }
+            
+            configList.innerHTML = '';
+            
+            if (Object.keys(profiles).length === 0) {
+                configList.innerHTML = '<li style="color: var(--text-secondary); font-size: 13px; padding: 12px;">暂无配置</li>';
+                return;
+            }
+            
+            Object.keys(profiles).forEach(name => {
+                const li = document.createElement('li');
+                li.className = 'config-list-item' + (name === activeProfile ? ' active' : '');
+                li.onclick = () => {
+                    profileSelect.value = name;
+                    switchProfile();
+                };
+                
+                const profile = profiles[name];
+                const videoHost = profile.video?.host || '未配置';
+                
+                li.innerHTML = `
+                    <div class="config-list-item-name">${profile.name || name}</div>
+                    <div class="config-list-item-info">MySQL: ${videoHost}</div>
+                    <div class="config-list-item-actions">
+                        <button class="config-list-btn" onclick="event.stopPropagation(); editProfile('${name}')" title="重命名">✏️</button>
+                        ${name !== 'default' ? `<button class="config-list-btn delete" onclick="event.stopPropagation(); deleteProfileByName('${name}')" title="删除">🗑️</button>` : ''}
+                    </div>
+                `;
+                
+                configList.appendChild(li);
+            });
+            
+            console.log('[renderConfigList] 配置列表已渲染，当前激活:', activeProfile);
+        }
         
         function showToast(message, type = 'info') {
             const toast = document.getElementById('toast');
@@ -680,6 +1005,15 @@ SETTINGS_TEMPLATE = """
                 }
                 
                 document.getElementById('deleteProfileBtn').disabled = Object.keys(profiles).length <= 1;
+                
+                // 渲染左侧配置列表
+                renderConfigList();
+                
+                // 更新详情卡片标题
+                const currentProfileNameEl = document.getElementById('currentProfileName');
+                if (currentProfileNameEl && profiles[activeProfile]) {
+                    currentProfileNameEl.textContent = profiles[activeProfile].name || activeProfile;
+                }
                 
                 // 填充表单 - 同时加载 video 和 ssh_config
                 const loaded = loadProfileData(activeProfile);
@@ -761,6 +1095,48 @@ SETTINGS_TEMPLATE = """
                 sshLogDirEl.value = sshConfig.log_dir || '';
                 console.log('[loadProfileData] SSH 配置已加载:', sshConfig.hostname);
                 
+                // 填充数据库监控配置
+                const dbMonitorConfig = profile.db_monitor || {};
+                console.log('[loadProfileData] db_monitor 配置:', dbMonitorConfig);
+                
+                const dbMonitorHostEl = document.getElementById('dbMonitorHost');
+                const dbMonitorPortEl = document.getElementById('dbMonitorPort');
+                const dbMonitorDatabaseEl = document.getElementById('dbMonitorDatabase');
+                const dbMonitorUserEl = document.getElementById('dbMonitorUser');
+                const dbMonitorPasswordEl = document.getElementById('dbMonitorPassword');
+                
+                if (!dbMonitorHostEl || !dbMonitorPortEl || !dbMonitorDatabaseEl || !dbMonitorUserEl || !dbMonitorPasswordEl) {
+                    console.error('[loadProfileData] 错误：数据库监控配置表单元素不存在');
+                    return false;
+                }
+                
+                dbMonitorHostEl.value = dbMonitorConfig.host || '';
+                dbMonitorPortEl.value = dbMonitorConfig.port || 3306;
+                dbMonitorDatabaseEl.value = dbMonitorConfig.database || '';
+                dbMonitorUserEl.value = dbMonitorConfig.user || '';
+                dbMonitorPasswordEl.value = ''; // 密码不回填
+                console.log('[loadProfileData] 数据库监控配置已加载:', dbMonitorConfig.host);
+                
+                // 填充服务器数据源配置
+                const serverDataSourceConfig = profile.server_data_source || {};
+                console.log('[loadProfileData] server_data_source 配置:', serverDataSourceConfig);
+                
+                const serverDataSourceHostEl = document.getElementById('serverDataSourceHost');
+                const serverDataSourcePortEl = document.getElementById('serverDataSourcePort');
+                const serverDataSourceUserEl = document.getElementById('serverDataSourceUser');
+                const serverDataSourcePasswordEl = document.getElementById('serverDataSourcePassword');
+                
+                if (!serverDataSourceHostEl || !serverDataSourcePortEl || !serverDataSourceUserEl || !serverDataSourcePasswordEl) {
+                    console.error('[loadProfileData] 错误：服务器数据源配置表单元素不存在');
+                    return false;
+                }
+                
+                serverDataSourceHostEl.value = serverDataSourceConfig.host || '';
+                serverDataSourcePortEl.value = serverDataSourceConfig.port || 22;
+                serverDataSourceUserEl.value = serverDataSourceConfig.username || '';
+                serverDataSourcePasswordEl.value = ''; // 密码不回填
+                console.log('[loadProfileData] 服务器数据源配置已加载:', serverDataSourceConfig.host);
+                
                 console.log('[loadProfileData] 配置加载完成');
                 return true;
             } catch (err) {
@@ -804,6 +1180,15 @@ SETTINGS_TEMPLATE = """
                 // 将 activeProfile 存入 localStorage
                 localStorage.setItem('activeProfile', profileName);
                 
+                // 更新左侧配置列表高亮
+                renderConfigList();
+                
+                // 更新详情卡片标题
+                const currentProfileNameEl = document.getElementById('currentProfileName');
+                if (currentProfileNameEl) {
+                    currentProfileNameEl.textContent = profiles[profileName].name || profileName;
+                }
+                
                 showToast('已切换到配置：' + (profiles[profileName].name || profileName) + '，点击保存后生效', 'success');
             } else {
                 console.error('[switchProfile] loadProfileData 返回 false');
@@ -840,7 +1225,77 @@ SETTINGS_TEMPLATE = """
             
             currentConfig.profiles = profiles;
             currentConfig.activeProfile = profileKey;
+            
+            // 更新下拉框
+            const profileSelect = document.getElementById('profileSelect');
+            const option = document.createElement('option');
+            option.value = profileKey;
+            option.textContent = name;
+            profileSelect.appendChild(option);
+            profileSelect.value = profileKey;
+            
+            // 重新渲染列表
+            renderConfigList();
+            
             saveSettings();
+        }
+        
+        // 编辑配置名称（左侧列表按钮）
+        function editProfile(profileName) {
+            const profile = profiles[profileName];
+            if (!profile) return;
+            
+            const newName = prompt('请输入新配置名称：', profile.name || profileName);
+            if (!newName || newName === profile.name) return;
+            
+            profile.name = newName;
+            
+            // 更新下拉框中的文本
+            const profileSelect = document.getElementById('profileSelect');
+            for (let i = 0; i < profileSelect.options.length; i++) {
+                if (profileSelect.options[i].value === profileName) {
+                    profileSelect.options[i].textContent = newName;
+                    break;
+                }
+            }
+            
+            renderConfigList();
+            showToast('配置名称已更新', 'success');
+        }
+        
+        // 删除配置（左侧列表按钮）
+        function deleteProfileByName(profileName) {
+            if (profileName === 'default') {
+                showToast('不能删除默认配置', 'error');
+                return;
+            }
+            
+            const profileDisplayName = profiles[profileName].name || profileName;
+            if (confirm(`确定要删除配置 "${profileDisplayName}" 吗？`)) {
+                delete profiles[profileName];
+                
+                // 从下拉框中移除
+                const profileSelect = document.getElementById('profileSelect');
+                for (let i = 0; i < profileSelect.options.length; i++) {
+                    if (profileSelect.options[i].value === profileName) {
+                        profileSelect.remove(i);
+                        break;
+                    }
+                }
+                
+                currentConfig.profiles = profiles;
+                currentConfig.activeProfile = 'default';
+                profileSelect.value = 'default';
+                
+                // 重新渲染列表
+                renderConfigList();
+                
+                // 更新删除按钮状态
+                document.getElementById('deleteProfileBtn').disabled = Object.keys(profiles).length <= 1;
+                
+                saveSettings();
+                showToast(`已删除配置：${profileDisplayName}`, 'success');
+            }
         }
         
         function deleteProfile() {
@@ -922,6 +1377,67 @@ SETTINGS_TEMPLATE = """
             }
         }
         
+        async function testDbMonitorConnection() {
+            const config = {
+                host: document.getElementById('dbMonitorHost').value,
+                port: parseInt(document.getElementById('dbMonitorPort').value) || 3306,
+                database: document.getElementById('dbMonitorDatabase').value,
+                user: document.getElementById('dbMonitorUser').value,
+                password: document.getElementById('dbMonitorPassword').value
+            };
+            
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '测试中...';
+            
+            try {
+                const res = await fetch('/api/settings/test_db_monitor', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await res.json();
+                showStatus('dbMonitorStatus', data.success, data.message);
+                showToast(data.success ? '数据库监控连接成功！' : '数据库监控连接失败：' + data.message, data.success ? 'success' : 'error');
+            } catch (err) {
+                showStatus('dbMonitorStatus', false, '测试失败');
+                showToast('测试失败：' + err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔌 测试连接';
+            }
+        }
+        
+        async function testServerDataSourceConnection() {
+            const config = {
+                host: document.getElementById('serverDataSourceHost').value,
+                port: parseInt(document.getElementById('serverDataSourcePort').value) || 22,
+                username: document.getElementById('serverDataSourceUser').value,
+                password: document.getElementById('serverDataSourcePassword').value
+            };
+            
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '测试中...';
+            
+            try {
+                const res = await fetch('/api/settings/test_server_data_source', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await res.json();
+                showStatus('serverDataSourceStatus', data.success, data.message);
+                showToast(data.success ? '服务器数据源连接成功！' : '服务器数据源连接失败：' + data.message, data.success ? 'success' : 'error');
+            } catch (err) {
+                showStatus('serverDataSourceStatus', false, '测试失败');
+                showToast('测试失败：' + err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔌 测试连接';
+            }
+        }
+        
         async function saveSettings() {
             const activeProfile = document.getElementById('profileSelect').value;
             const config = {
@@ -956,6 +1472,25 @@ SETTINGS_TEMPLATE = """
                     username: document.getElementById('sshUser').value,
                     password: sshPassword ? btoa(sshPassword) : (currentProfile.ssh_config?.password || ''),
                     log_dir: document.getElementById('sshLogDir').value
+                };
+                
+                // 保存数据库监控配置到同一个 profile
+                const dbMonitorPassword = document.getElementById('dbMonitorPassword').value;
+                currentProfile.db_monitor = {
+                    host: document.getElementById('dbMonitorHost').value,
+                    port: parseInt(document.getElementById('dbMonitorPort').value) || 3306,
+                    database: document.getElementById('dbMonitorDatabase').value,
+                    user: document.getElementById('dbMonitorUser').value,
+                    password: dbMonitorPassword ? btoa(dbMonitorPassword) : (currentProfile.db_monitor?.password || '')
+                };
+                
+                // 保存服务器数据源配置到同一个 profile
+                const serverDataSourcePassword = document.getElementById('serverDataSourcePassword').value;
+                currentProfile.server_data_source = {
+                    host: document.getElementById('serverDataSourceHost').value,
+                    port: parseInt(document.getElementById('serverDataSourcePort').value) || 22,
+                    username: document.getElementById('serverDataSourceUser').value,
+                    password: serverDataSourcePassword ? btoa(serverDataSourcePassword) : (currentProfile.server_data_source?.password || '')
                 };
             }
             
@@ -1003,7 +1538,7 @@ SETTINGS_TEMPLATE = """
                 toggleIcon.style.transform = 'rotate(180deg)';
             }
             
-            let hoverTimeout = null;
+            // 鼠标悬停展开（仅当sidebar已折叠时）
             sidebar.addEventListener('mouseenter', function() {
                 if (sidebar.classList.contains('collapsed')) {
                     sidebar.classList.remove('collapsed');
@@ -1011,18 +1546,20 @@ SETTINGS_TEMPLATE = """
                     toggleIcon.style.transform = 'rotate(0deg)';
                 }
             });
-            
-            sidebar.addEventListener('mouseleave', function() {
-                if (savedState === 'true') {
-                    hoverTimeout = setTimeout(function() {
-                        sidebar.classList.add('collapsed');
-                        mainWrapper.classList.add('collapsed-margin');
-                        toggleIcon.style.transform = 'rotate(180deg)';
-                    }, 200);
+
+            // 点击主内容区域折叠sidebar（仅当sidebar展开时）
+            mainWrapper.addEventListener('click', function() {
+                if (!sidebar.classList.contains('collapsed')) {
+                    sidebar.classList.add('collapsed');
+                    mainWrapper.classList.add('collapsed-margin');
+                    toggleIcon.style.transform = 'rotate(180deg)';
+                    localStorage.setItem('sidebarCollapsed', 'true');
                 }
             });
-            
-            toggle.addEventListener('click', function() {
+
+            // 点击切换按钮
+            toggle.addEventListener('click', function(e) {
+                e.stopPropagation(); // 阻止事件冒泡到mainWrapper
                 const isCollapsed = sidebar.classList.toggle('collapsed');
                 mainWrapper.classList.toggle('collapsed-margin');
                 toggleIcon.style.transform = isCollapsed ? 'rotate(180deg)' : 'rotate(0deg)';
@@ -1071,6 +1608,12 @@ def create_settings_routes(app):
                     if global_ssh.get('hostname'):
                         ssh_config = global_ssh
                 
+                # 获取 db_monitor 配置
+                db_monitor_config = profile.get('db_monitor', {})
+                
+                # 获取 server_data_source 配置
+                server_data_source = profile.get('server_data_source', {})
+                
                 profiles[name] = {
                     'name': profile.get('name', name),
                     'video': {
@@ -1086,6 +1629,19 @@ def create_settings_routes(app):
                         'username': ssh_config.get('username', ''),
                         'password': '',  # 密码不返回
                         'log_dir': ssh_config.get('log_dir', '')
+                    },
+                    'db_monitor': {
+                        'host': db_monitor_config.get('host', ''),
+                        'port': db_monitor_config.get('port', 3306),
+                        'database': db_monitor_config.get('database', ''),
+                        'user': db_monitor_config.get('user', ''),
+                        'password': ''  # 密码不返回
+                    },
+                    'server_data_source': {
+                        'host': server_data_source.get('host', ''),
+                        'port': server_data_source.get('port', 22),
+                        'username': server_data_source.get('username', ''),
+                        'password': ''  # 密码不返回
                     }
                 }
             
@@ -1153,6 +1709,39 @@ def create_settings_routes(app):
                 'log_dir': data.get('log_dir', '')
             }
             result = test_ssh_connection(ssh_config)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({'success': False, 'message': str(e)}), 500
+    
+    @app.route('/api/settings/test_db_monitor', methods=['POST'])
+    def api_test_db_monitor():
+        """测试数据库监控连接"""
+        try:
+            data = request.json
+            db_monitor_config = {
+                'host': data.get('host', 'localhost'),
+                'port': data.get('port', 3306),
+                'database': data.get('database', 'information_schema'),
+                'user': data.get('user', 'root'),
+                'password': data.get('password', '')
+            }
+            result = test_db_monitor_connection(db_monitor_config)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({'success': False, 'message': str(e)}), 500
+    
+    @app.route('/api/settings/test_server_data_source', methods=['POST'])
+    def api_test_server_data_source():
+        """测试服务器数据源连接"""
+        try:
+            data = request.json
+            server_data_source_config = {
+                'host': data.get('host', 'localhost'),
+                'port': data.get('port', 22),
+                'username': data.get('username', 'root'),
+                'password': data.get('password', '')
+            }
+            result = test_server_data_source_connection(server_data_source_config)
             return jsonify(result)
         except Exception as e:
             return jsonify({'success': False, 'message': str(e)}), 500

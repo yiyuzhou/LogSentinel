@@ -16,6 +16,7 @@ from mps_module import MPS_LIST_TEMPLATE, MPS_DETAIL_TEMPLATE
 from log_viewer import LOG_VIEWER_TEMPLATE, list_log_files, get_log_content, get_new_log_lines, get_log_stats, download_log_file, validate_log_file
 from settings import create_settings_routes, init_db_config, get_video_db_config
 from server_monitor import register_server_monitor_routes, start_data_collection
+from db_monitor import register_db_monitor_routes
 
 app = Flask(__name__)
 CORS(app)
@@ -31,6 +32,9 @@ create_settings_routes(app)
 
 # 初始化数据库配置
 init_db_config()
+
+# 注册数据库监控路由
+register_db_monitor_routes(app)
 
 # 从配置文件加载数据库配置
 # 注意：不再使用全局缓存，每次请求都从配置文件读取，确保配置同步
@@ -337,6 +341,10 @@ LIST_TEMPLATE = """
             <a href="/server-monitor" class="menu-item" data-page="server-monitor">
                 <span class="icon">🖥️</span>
                 <span class="label">服务器监控</span>
+            </a>
+            <a href="/db-monitor" class="menu-item" data-page="db-monitor">
+                <span class="icon">🗄️</span>
+                <span class="label">数据库监控</span>
             </a>
             <div class="menu-section" style="margin-top: 20px;">系统</div>
             <a href="/settings" class="menu-item" data-page="settings">
@@ -692,8 +700,7 @@ LIST_TEMPLATE = """
                 toggleIcon.style.transform = 'rotate(180deg)';
             }
             
-            // 鼠标悬停展开
-            let hoverTimeout = null;
+            // 鼠标悬停展开（仅当sidebar已折叠时）
             sidebar.addEventListener('mouseenter', function() {
                 if (sidebar.classList.contains('collapsed')) {
                     sidebar.classList.remove('collapsed');
@@ -701,19 +708,20 @@ LIST_TEMPLATE = """
                     toggleIcon.style.transform = 'rotate(0deg)';
                 }
             });
-            
-            sidebar.addEventListener('mouseleave', function() {
-                if (savedState === 'true') {
-                    hoverTimeout = setTimeout(function() {
-                        sidebar.classList.add('collapsed');
-                        mainWrapper.classList.add('collapsed-margin');
-                        toggleIcon.style.transform = 'rotate(180deg)';
-                    }, 200);
+
+            // 点击主内容区域折叠sidebar（仅当sidebar展开时）
+            mainWrapper.addEventListener('click', function() {
+                if (!sidebar.classList.contains('collapsed')) {
+                    sidebar.classList.add('collapsed');
+                    mainWrapper.classList.add('collapsed-margin');
+                    toggleIcon.style.transform = 'rotate(180deg)';
+                    localStorage.setItem('sidebarCollapsed', 'true');
                 }
             });
-            
-            // 点击切换
-            toggle.addEventListener('click', function() {
+
+            // 点击切换按钮
+            toggle.addEventListener('click', function(e) {
+                e.stopPropagation(); // 阻止事件冒泡到mainWrapper
                 const isCollapsed = sidebar.classList.toggle('collapsed');
                 mainWrapper.classList.toggle('collapsed-margin');
                 toggleIcon.style.transform = isCollapsed ? 'rotate(180deg)' : 'rotate(0deg)';
@@ -780,7 +788,6 @@ MPS_TEMPLATE = """
             <a href="/mps" class="menu-item active" data-page="mps">
                 <span class="icon">🐧</span>
                 <span class="label">腾讯 MPS</span>
-                <span class="menu-badge">开发中</span>
             </a>
         </nav>
     </aside>
@@ -891,7 +898,6 @@ DETAIL_TEMPLATE = """
             <a href="/mps" class="menu-item" data-page="mps">
                 <span class="icon">🐧</span>
                 <span class="label">腾讯 MPS</span>
-                <span class="menu-badge">开发中</span>
             </a>
             <div class="menu-section" style="margin-top: 20px;">系统监控</div>
             <a href="/logs" class="menu-item" data-page="logs">
@@ -901,6 +907,10 @@ DETAIL_TEMPLATE = """
             <a href="/server-monitor" class="menu-item" data-page="server-monitor">
                 <span class="icon">🖥️</span>
                 <span class="label">服务器监控</span>
+            </a>
+            <a href="/db-monitor" class="menu-item" data-page="db-monitor">
+                <span class="icon">🗄️</span>
+                <span class="label">数据库监控</span>
             </a>
             <div class="menu-section" style="margin-top: 20px;">系统</div>
             <a href="/settings" class="menu-item" data-page="settings">
