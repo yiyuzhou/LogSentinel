@@ -208,6 +208,22 @@ LIST_TEMPLATE = """
         /* 主内容区 */
         .main-wrapper { flex: 1; margin-left: var(--sidebar-width); min-height: 100vh; display: flex; flex-direction: column; transition: margin-left 0.3s ease; }
         .sidebar.collapsed ~ .main-wrapper, .main-wrapper.collapsed-margin { margin-left: 64px; }
+
+        /* 顶部数据源切换通栏 */
+        .top-navbar { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); padding: 12px 30px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+        .navbar-left { display: flex; align-items: center; gap: 16px; }
+        .navbar-label { color: rgba(255,255,255,0.8); font-size: 13px; font-weight: 500; }
+        .navbar-select { padding: 8px 14px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; color: white; font-size: 14px; min-width: 180px; cursor: pointer; transition: all 0.2s; }
+        .navbar-select:hover { background: rgba(255,255,255,0.25); }
+        .navbar-select option { background: var(--bg-card); color: var(--text-primary); }
+        .navbar-stats { display: flex; align-items: center; gap: 20px; margin-left: auto; }
+        .navbar-stat { display: flex; align-items: center; gap: 8px; }
+        .navbar-stat-label { color: rgba(255,255,255,0.7); font-size: 12px; }
+        .navbar-stat-value { color: white; font-size: 16px; font-weight: 600; }
+        .navbar-stat-value.total { color: #60a5fa; }
+        .navbar-stat-value.waiting { color: #fbbf24; }
+        .navbar-stat-value.failed { color: #f87171; }
+
         .main-content { padding: 24px 30px; flex: 1; }
         
         /* 统计卡片 */
@@ -333,6 +349,11 @@ LIST_TEMPLATE = """
                 <span class="icon">🐧</span>
                 <span class="label">腾讯 MPS</span>
             </a>
+            <div class="menu-section" style="margin-top: 20px;">日志管理</div>
+            <a href="/algo-comm-log" class="menu-item" data-page="algo-comm-log">
+                <span class="icon">🔬</span>
+                <span class="label">算法通讯日志</span>
+            </a>
             <div class="menu-section" style="margin-top: 20px;">系统监控</div>
             <a href="/logs" class="menu-item" data-page="logs">
                 <span class="icon">📋</span>
@@ -351,6 +372,10 @@ LIST_TEMPLATE = """
                 <span class="icon">⚙️</span>
                 <span class="label">系统设置</span>
             </a>
+            <a href="/dict-config" class="menu-item" data-page="dict-config">
+                <span class="icon">📚</span>
+                <span class="label">字典配置</span>
+            </a>
         </nav>
         <div class="sidebar-footer">
             <div class="sidebar-status">
@@ -363,6 +388,30 @@ LIST_TEMPLATE = """
     
     <!-- 主内容区 -->
     <div class="main-wrapper" id="mainWrapper">
+        <!-- 顶部数据源切换通栏 -->
+        <div class="top-navbar">
+            <div class="navbar-left">
+                <span class="navbar-label">数据源：</span>
+                <select id="globalDataSource" class="navbar-select" onchange="switchDataSource()">
+                    <option value="">加载中...</option>
+                </select>
+            </div>
+            <div class="navbar-stats">
+                <div class="navbar-stat">
+                    <span class="navbar-stat-label">总数：</span>
+                    <span class="navbar-stat-value total" id="navbarTotal">-</span>
+                </div>
+                <div class="navbar-stat">
+                    <span class="navbar-stat-label">等待：</span>
+                    <span class="navbar-stat-value waiting" id="navbarWaiting">-</span>
+                </div>
+                <div class="navbar-stat">
+                    <span class="navbar-stat-label">失败：</span>
+                    <span class="navbar-stat-value failed" id="navbarFailed">-</span>
+                </div>
+            </div>
+        </div>
+
         <div class="main-content">
             <div id="statsContent"></div>
             
@@ -582,6 +631,59 @@ LIST_TEMPLATE = """
             renderTables();
         }
 
+        // 初始化数据源选择器
+        async function initDataSourceSelector() {
+            try {
+                const res = await fetch('/api/settings/valid_profiles');
+                const data = await res.json();
+                if (!data.success) return;
+
+                const select = document.getElementById('globalDataSource');
+                select.innerHTML = '';
+
+                data.profiles.forEach(p => {
+                    const option = document.createElement('option');
+                    option.value = p.key;
+                    option.textContent = p.name;
+                    if (p.active) option.selected = true;
+                    select.appendChild(option);
+                });
+
+                // 保存到 localStorage
+                localStorage.setItem('activeProfile', data.activeProfile);
+            } catch (err) {
+                console.error('初始化数据源选择器失败:', err);
+            }
+        }
+
+        // 切换数据源
+        async function switchDataSource() {
+            const select = document.getElementById('globalDataSource');
+            const newProfile = select.value;
+            const currentProfile = localStorage.getItem('activeProfile') || '';
+
+            if (newProfile === currentProfile) return;
+
+            try {
+                const res = await fetch('/api/settings/switch_profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ profile: newProfile })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    localStorage.setItem('activeProfile', newProfile);
+                    loadData();
+                } else {
+                    alert('切换失败：' + (data.error || '未知错误'));
+                    initDataSourceSelector();
+                }
+            } catch (err) {
+                alert('切换失败：' + err.message);
+            }
+        }
+
         async function getActiveProfile() {
             let activeProfile = localStorage.getItem('activeProfile') || '';
             if (activeProfile) return activeProfile;
@@ -621,6 +723,11 @@ LIST_TEMPLATE = """
                 statsHtml += '<div class="stat-card failed"><h3>❌ 失败</h3><div class="number">' + (stats.failed || 0) + '</div></div>';
                 statsHtml += '<div class="stat-card today"><h3>📅 今日新增</h3><div class="number">' + (stats.today_total || 0) + '</div></div></div>';
                 document.getElementById('statsContent').innerHTML = statsHtml;
+
+                // 更新顶部统计数据
+                document.getElementById('navbarTotal').textContent = stats.total || 0;
+                document.getElementById('navbarWaiting').textContent = stats.waiting || 0;
+                document.getElementById('navbarFailed').textContent = stats.failed || 0;
                 
                 applySearch();
                 document.getElementById('lastUpdate').textContent = new Date().toLocaleString('zh-CN');
@@ -729,7 +836,7 @@ LIST_TEMPLATE = """
             });
         }
         
-        document.addEventListener('DOMContentLoaded', function() { console.log('formatTime loaded'); loadData(); setupAutoRefresh(); setupSidebarToggle(); });
+        document.addEventListener('DOMContentLoaded', function() { console.log('formatTime loaded'); initDataSourceSelector(); loadData(); setupAutoRefresh(); setupSidebarToggle(); });
     </script>
 </body>
 </html>
@@ -857,6 +964,7 @@ DETAIL_TEMPLATE = """
         tr:hover { background: var(--bg-hover); }
         .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; }
         .status-success { background: rgba(5, 150, 105, 0.15); color: #34d399; border: 1px solid rgba(5, 150, 105, 0.3); }
+        .status-processing { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
         .status-error { background: rgba(220, 38, 38, 0.15); color: #f87171; border: 1px solid rgba(220, 38, 38, 0.3); }
         .status-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; backdrop-filter: blur(4px); }
@@ -873,6 +981,15 @@ DETAIL_TEMPLATE = """
         .no-data { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
         .no-data-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
         .error-msg { background: rgba(220, 38, 38, 0.15); border: 1px solid rgba(220, 38, 38, 0.3); color: #f87171; padding: 20px; border-radius: 12px; text-align: center; margin: 20px 0; }
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay:not([style*="display: none"]) { display: flex; }
+        .modal-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; max-width: 800px; width: 95%; max-height: 80vh; display: flex; flex-direction: column; }
+        .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+        .modal-head h3 { font-size: 16px; font-weight: 600; }
+        .modal-close { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 20px; padding: 4px; }
+        .modal-close:hover { color: var(--text-primary); }
+        .modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+        .modal-body pre { background: var(--bg-dark); border-radius: 8px; padding: 14px; font-size: 12px; white-space: pre-wrap; word-break: break-all; color: var(--text-primary); border: 1px solid var(--border); max-height: 500px; overflow-y: auto; }
         .loading { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
         .spinner { border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; width: 48px; height: 48px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -899,6 +1016,11 @@ DETAIL_TEMPLATE = """
                 <span class="icon">🐧</span>
                 <span class="label">腾讯 MPS</span>
             </a>
+            <div class="menu-section" style="margin-top: 20px;">日志管理</div>
+            <a href="/algo-comm-log" class="menu-item" data-page="algo-comm-log">
+                <span class="icon">🔬</span>
+                <span class="label">算法通讯日志</span>
+            </a>
             <div class="menu-section" style="margin-top: 20px;">系统监控</div>
             <a href="/logs" class="menu-item" data-page="logs">
                 <span class="icon">📋</span>
@@ -917,9 +1039,13 @@ DETAIL_TEMPLATE = """
                 <span class="icon">⚙️</span>
                 <span class="label">系统设置</span>
             </a>
+            <a href="/dict-config" class="menu-item" data-page="dict-config">
+                <span class="icon">📚</span>
+                <span class="label">字典配置</span>
+            </a>
         </nav>
     </aside>
-    
+
     <!-- 主内容区 -->
     <div class="main-wrapper">
         <div class="top-bar">
@@ -1008,10 +1134,10 @@ DETAIL_TEMPLATE = """
                 const res = await fetch('/api/task_detail?id=' + taskId);
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || '加载失败');
-                
+
                 const task = data.task;
                 const logs = data.logs || [];
-                
+
                 let html = '<div class="task-info"><h2>📌 任务基本信息</h2><div class="info-grid">';
                 html += '<div class="info-item"><label>Task ID</label><div class="value">' + task.id + '</div></div>';
                 html += '<div class="info-item"><label>剧名</label><div class="value">' + (task.name || '-') + '</div></div>';
@@ -1020,25 +1146,25 @@ DETAIL_TEMPLATE = """
                 html += '<div class="info-item"><label>Series ID</label><div class="value">' + (task.series_id || '-') + '</div></div>';
                 html += '<div class="info-item"><label>创建时间</label><div class="value">' + formatTime(task.create_time) + '</div></div>';
                 html += '</div></div>';
-                
-                html += '<div class="table-section"><div class="table-header">🔗 请求日志 <span style="font-weight:normal;font-size:13px;opacity:0.8">(' + logs.length + ')</span></div>';
-                if (logs.length === 0) { html += '<div class="no-data"><div class="no-data-icon">📭</div>暂无请求日志</div>'; }
-                else {
+
+                // 算法请求日志
+                html += '<div class="table-section"><div class="table-header">🔗 算法请求日志 <span style="font-weight:normal;font-size:13px;opacity:0.8">(' + logs.length + ')</span></div>';
+                if (logs.length === 0) {
+                    html += '<div class="no-data"><div class="no-data-icon">📭</div>暂无请求日志</div>';
+                } else {
                     html += '<div class="table-container"><table><thead><tr>';
-                    html += '<th>Trace ID</th><th>模块</th><th>请求 URL</th><th>状态</th><th>失败类型</th><th>开始时间</th><th>结束时间</th><th>耗时 (s)</th><th>操作</th>';
+                    html += '<th>Trace ID</th><th>模块</th><th>请求 URL</th><th>状态</th><th>失败类型</th><th>开始时间</th><th>结束时间</th><th>耗时 (ms)</th><th>操作</th>';
                     html += '</tr></thead><tbody>';
                     logs.forEach((log, idx) => {
-                        const duration = log.begin_time && log.end_time ? ((new Date(log.end_time) - new Date(log.begin_time)) / 1000).toFixed(2) : '-';
-                        const reqBodyStr = log.request_body ? JSON.stringify(log.request_body) : 'null';
-                        const resBodyStr = log.response_body ? JSON.stringify(log.response_body) : 'null';
+                        const duration = log.duration_ms != null ? log.duration_ms.toLocaleString() : '-';
                         html += '<tr>';
-                        html += '<td>' + (log.trace_id || '-') + '</td>';
-                        html += '<td>' + (log.module_name || '-') + '</td>';
-                        html += '<td>' + truncate(log.request_url || '-', 40) + '</td>';
-                        html += '<td>' + formatStatus(log.response_status) + '</td>';
-                        html += '<td>' + (log.fail_type || '-') + '</td>';
-                        html += '<td>' + formatTime(log.begin_time) + '</td>';
-                        html += '<td>' + formatTime(log.end_time) + '</td>';
+                        html += '<td>' + escHtml(log.trace_id || '-') + '</td>';
+                        html += '<td>' + escHtml(log.module_name || '-') + '</td>';
+                        html += '<td>' + escHtml(log.module_path || '-') + '</td>';
+                        html += '<td>' + (log.response_status || '-') + '</td>';
+                        html += '<td>' + escHtml(log.fail_type || '-') + '</td>';
+                        html += '<td>' + (log.begin_time || '-') + '</td>';
+                        html += '<td>' + (log.end_time || '-') + '</td>';
                         html += '<td>' + duration + '</td>';
                         html += '<td>';
                         html += '<button class="view-btn" onclick="viewReq(' + idx + ')">请求</button> ';
@@ -1048,8 +1174,7 @@ DETAIL_TEMPLATE = """
                     html += '</tbody></table></div>';
                 }
                 html += '</div>';
-                document.getElementById('content').innerHTML = html;
-                
+
                 // 绑定查看请求/响应的函数
                 window.viewReq = function(idx) {
                     const log = logs[idx];
@@ -1061,13 +1186,28 @@ DETAIL_TEMPLATE = """
                     const data = log.response_body;
                     viewJson('响应 Body', data);
                 };
-                
+
+                document.getElementById('content').innerHTML = html;
+
                 document.title = '任务详情 - Task #' + taskId;
             } catch (err) {
                 console.error('Load detail error:', err);
                 document.getElementById('content').innerHTML = '<div class="error-msg">❌ 加载失败：' + err.message + '</div>';
             }
         }
+
+        function escHtml(s) {
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+        function truncate(s, n) { return s && s.length > n ? s.substring(0, n) + '…' : s; }
+        function viewJson(title, data) {
+            let content = '';
+            try {
+                content = JSON.stringify(JSON.parse(data), null, 2);
+            } catch(e) { content = data; }
+            document.getElementById('content').innerHTML += '<div class="modal-overlay" id="jsonModal" onclick="if(event.target===this)this.remove()"><div class="modal-box"><div class="modal-head"><h3>' + title + '</h3><button class="modal-close" onclick="this.parentElement.parentElement.parentElement.remove()">✕</button></div><div class="modal-body"><pre>' + escHtml(content) + '</pre></div></div></div>';
+        }
+
         document.addEventListener('DOMContentLoaded', loadDetail);
     </script>
 </body>
@@ -1156,36 +1296,30 @@ def get_task_detail():
         task = query_db(task_sql, (task_id,), profile=profile)
         if not task:
             return jsonify({'success': False, 'error': 'Task not found'}), 404
-        
+
         task = task[0]
         status_map = {0: '等待', 1: '处理中', 2: '完成', 3: '失败', 4: '排队'}
         task['status_text'] = status_map.get(task['status'], '未知')
         # Python 格式化任务创建时间
         if task.get('create_time'):
             task['create_time'] = format_rfc_time(task['create_time'])
-        
-        # 请求日志（时间正序）
-        log_sql = """SELECT trace_id, task_id, series_id, module_name, module_path, request_url, 
-               request_body, response_body, response_status, fail_type, begin_time, end_time 
-        FROM v_algorithm_request_log WHERE task_id = %s ORDER BY begin_time ASC LIMIT 100"""
+
+        # 查询算法请求日志
+        log_sql = """SELECT trace_id, task_id, module_name, module_path, request_url, response_status,
+               fail_type, error_name, error_message, begin_time, end_time, duration_ms,
+               request_body, response_body
+        FROM v_algorithm_request_log WHERE task_id = %s AND deleted = 0 ORDER BY begin_time DESC"""
         logs = query_db(log_sql, (task_id,), profile=profile)
-        
+
         # 处理 JSON 字段和时间格式化
         for log in logs:
-            if log['request_body']:
-                try: log['request_body'] = json.loads(log['request_body']) if isinstance(log['request_body'], str) else log['request_body']
-                except: pass
-            if log['response_body']:
-                try: log['response_body'] = json.loads(log['response_body']) if isinstance(log['response_body'], str) else log['response_body']
-                except: pass
-            # Python 格式化日志时间
             if log.get('begin_time'):
                 log['begin_time'] = format_rfc_time(log['begin_time'])
             if log.get('end_time'):
                 log['end_time'] = format_rfc_time(log['end_time'])
-        
-        print(f"API /api/task_detail task={task_id} logs={len(logs)}", file=sys.stderr)
-        
+
+        print(f"API /api/task_detail task={task_id}, logs={len(logs)}", file=sys.stderr)
+
         return jsonify({'success': True, 'task': task, 'logs': logs, 'timestamp': datetime.now().isoformat()})
     except Exception as e:
         print(f"API /api/task_detail error: {e}", file=sys.stderr)
@@ -1433,8 +1567,310 @@ def api_logs_download():
             'X-Actual-Lines': str(result['lines'])
         }
     )
-    
+
     return response
+
+
+# ============== 算法通讯日志页面 ==============
+ALGO_COMM_LOG_TEMPLATE = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>算法通讯日志 - 视频任务运维系统</title>
+    <style>
+        :root { --primary: #2563eb; --primary-dark: #1d4ed8; --success: #059669; --warning: #d97706; --danger: #dc2626; --info: #7c3aed; --bg-dark: #0f172a; --bg-card: #1e293b; --bg-hover: #334155; --text-primary: #f1f5f9; --text-secondary: #94a3b8; --border: #334155; --sidebar-width: 240px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', 'Segoe UI', Arial, sans-serif; background: var(--bg-dark); min-height: 100vh; color: var(--text-primary); display: flex; }
+        .sidebar { width: var(--sidebar-width); background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); border-right: 1px solid var(--border); min-height: 100vh; position: fixed; left: 0; top: 0; display: flex; flex-direction: column; transition: width 0.3s ease; overflow: hidden; z-index: 100; }
+        .sidebar.collapsed { width: 64px; }
+        .sidebar-logo { padding: 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+        .sidebar-logo .logo-icon { width: 40px; height: 40px; background: linear-gradient(135deg, var(--primary) 0%, var(--info) 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+        .sidebar-logo h1 { color: var(--text-primary); font-size: 18px; font-weight: 600; white-space: nowrap; transition: opacity 0.2s; }
+        .navbar-version { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+        .sidebar-toggle { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px; margin-left: auto; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 6px; transition: background 0.2s, color 0.2s; }
+        .sidebar-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .sidebar-menu { flex: 1; padding: 16px 0; overflow-y: auto; overflow-x: hidden; }
+        .menu-section { padding: 8px 20px 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-secondary); white-space: nowrap; transition: opacity 0.2s; }
+        .menu-item { display: flex; align-items: center; gap: 12px; padding: 10px 20px; color: var(--text-secondary); text-decoration: none; transition: background 0.15s, color 0.15s; white-space: nowrap; overflow: hidden; }
+        .menu-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .menu-item.active { background: rgba(37, 99, 235, 0.15); color: var(--primary); border-right: 3px solid var(--primary); }
+        .menu-item .icon { font-size: 18px; flex-shrink: 0; width: 24px; text-align: center; }
+        .menu-item .label { font-size: 14px; transition: opacity 0.2s; }
+        .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); }
+        .sidebar-status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+        .status-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; flex-shrink: 0; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.5} }
+        .last-update { font-size: 11px; color: var(--text-secondary); margin-top: 4px; white-space: nowrap; }
+        .sidebar.collapsed .menu-section, .sidebar.collapsed .label, .sidebar.collapsed .navbar-version, .sidebar.collapsed .sidebar-logo h1, .sidebar.collapsed .last-update, .sidebar.collapsed .sidebar-status span:last-child { opacity: 0; width: 0; overflow: hidden; }
+        .main-wrapper { margin-left: var(--sidebar-width); flex: 1; display: flex; flex-direction: column; transition: margin-left 0.3s ease; min-height: 100vh; }
+        .main-wrapper.expanded { margin-left: 64px; }
+        .top-navbar { background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 10px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        .navbar-left { display: flex; align-items: center; gap: 10px; }
+        .navbar-label { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+        .navbar-select { background: var(--bg-dark); border: 1px solid var(--border); color: var(--text-primary); padding: 5px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; min-width: 120px; }
+        .navbar-select:focus { outline: none; border-color: var(--primary); }
+        .main-content { flex: 1; padding: 24px; }
+        .page-header { margin-bottom: 20px; }
+        .page-header h1 { font-size: 22px; font-weight: 600; }
+        .page-header p { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+        .filter-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; margin-bottom: 20px; }
+        .filter-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+        .filter-group { display: flex; flex-direction: column; gap: 4px; }
+        .filter-group label { font-size: 12px; color: var(--text-secondary); }
+        .filter-input { background: var(--bg-dark); border: 1px solid var(--border); color: var(--text-primary); padding: 6px 10px; border-radius: 6px; font-size: 13px; min-width: 140px; }
+        .filter-input:focus { outline: none; border-color: var(--primary); }
+        .filter-select { background: var(--bg-dark); border: 1px solid var(--border); color: var(--text-primary); padding: 6px 10px; border-radius: 6px; font-size: 13px; min-width: 140px; cursor: pointer; }
+        .btn { padding: 7px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; transition: background 0.15s; }
+        .btn-primary { background: var(--primary); color: #fff; }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-secondary { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: #475569; }
+        .table-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+        .table-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+        .table-header h2 { font-size: 15px; font-weight: 600; }
+        .table-info { font-size: 13px; color: var(--text-secondary); }
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        thead th { background: rgba(51,65,85,0.5); padding: 10px 14px; text-align: left; font-weight: 600; color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+        tbody tr { border-top: 1px solid var(--border); transition: background 0.12s; }
+        tbody tr:hover { background: var(--bg-hover); }
+        tbody td { padding: 10px 14px; color: var(--text-primary); vertical-align: middle; }
+        .cell-mono { font-family: 'Courier New', monospace; font-size: 12px; color: var(--text-secondary); }
+        .view-btn { background: var(--primary); color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 4px; }
+        .view-btn:hover { background: var(--primary-dark); }
+        .loading { display: flex; align-items: center; justify-content: center; padding: 60px; color: var(--text-secondary); gap: 10px; }
+        .loading-spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .empty { text-align: center; padding: 60px; color: var(--text-secondary); font-size: 14px; }
+        .error-msg { color: #f87171; font-size: 13px; padding: 4px 0; }
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.show { display: flex; }
+        .modal-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; max-width: 800px; width: 95%; max-height: 80vh; display: flex; flex-direction: column; }
+        .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+        .modal-head h3 { font-size: 15px; font-weight: 600; }
+        .modal-close { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 20px; }
+        .modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+        .modal-body pre { background: var(--bg-dark); border-radius: 8px; padding: 14px; font-size: 12px; white-space: pre-wrap; word-break: break-all; color: var(--text-primary); border: 1px solid var(--border); max-height: 500px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-logo">
+            <div class="logo-icon">📊</div>
+            <div><h1>运维系统</h1><div class="navbar-version">v1.0.0 by yiyuzhou</div></div>
+            <button class="sidebar-toggle" id="sidebarToggle" title="收起/展开菜单">
+                <svg id="toggleIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </button>
+        </div>
+        <nav class="sidebar-menu">
+            <div class="menu-section">任务管理</div>
+            <a href="/" class="menu-item" data-page="internal"><span class="icon">🎬</span><span class="label">内部译制</span></a>
+            <a href="/mps" class="menu-item" data-page="mps"><span class="icon">🐧</span><span class="label">腾讯 MPS</span></a>
+            <div class="menu-section" style="margin-top: 20px;">日志管理</div>
+            <a href="/algo-comm-log" class="menu-item active" data-page="algo-comm-log"><span class="icon">🔬</span><span class="label">算法通讯日志</span></a>
+            <div class="menu-section" style="margin-top: 20px;">系统监控</div>
+            <a href="/logs" class="menu-item" data-page="logs"><span class="icon">📋</span><span class="label">日志监控</span></a>
+            <a href="/server-monitor" class="menu-item" data-page="server-monitor"><span class="icon">🖥️</span><span class="label">服务器监控</span></a>
+            <a href="/db-monitor" class="menu-item" data-page="db-monitor"><span class="icon">🗄️</span><span class="label">数据库监控</span></a>
+            <div class="menu-section" style="margin-top: 20px;">系统</div>
+            <a href="/settings" class="menu-item" data-page="settings"><span class="icon">⚙️</span><span class="label">系统设置</span></a>
+            <a href="/dict-config" class="menu-item" data-page="dict-config"><span class="icon">📚</span><span class="label">字典配置</span></a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="sidebar-status"><span class="status-dot"></span><span>系统运行正常</span></div>
+            <div class="last-update">最后更新：<span id="lastUpdate">-</span></div>
+        </div>
+    </aside>
+
+    <div class="main-wrapper" id="mainWrapper">
+        <div class="top-navbar">
+            <div class="navbar-left">
+                <span class="navbar-label">当前环境：</span>
+                <select class="navbar-select" id="profileSelect" onchange="switchDataSource(this.value)"><option value="">加载中...</option></select>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="page-header"><h1>🔬 算法通讯日志</h1><p>查看算法模块的 HTTP 请求与响应记录</p></div>
+
+            <div class="table-card">
+                <div class="table-header"><h2>请求记录</h2><span class="table-info" id="totalInfo">-</span></div>
+                <div id="tableContainer"><div class="loading"><div class="loading-spinner"></div>加载中...</div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="detailModal" onclick="closeModal(event)">
+        <div class="modal-box">
+            <div class="modal-head"><h3 id="modalTitle">请求详情</h3><button class="modal-close" onclick="hideModal()">✕</button></div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <script>
+        const sidebar = document.getElementById('sidebar');
+        const mainWrapper = document.getElementById('mainWrapper');
+        document.getElementById('sidebarToggle').addEventListener('click', () => {
+            sidebar.classList.toggle('collapsed');
+            mainWrapper.classList.toggle('expanded');
+            document.getElementById('toggleIcon').innerHTML = sidebar.classList.contains('collapsed') ? '<polyline points="9 18 15 12 9 6"></polyline>' : '<polyline points="15 18 9 12 15 6"></polyline>';
+        });
+
+        let currentPage = 1;
+        const PAGE_SIZE = 20;
+        let totalCount = 0;
+        let _rowCache = {};
+
+        async function initDataSourceSelector() {
+            try {
+                const res = await fetch('/api/settings/valid_profiles');
+                const data = await res.json();
+                if (!data.success) return;
+                const sel = document.getElementById('profileSelect');
+                sel.innerHTML = '';
+                data.profiles.forEach(p => { const opt = document.createElement('option'); opt.value = p.key; opt.textContent = p.name; if (p.active) opt.selected = true; sel.appendChild(opt); });
+                const saved = localStorage.getItem('activeProfile');
+                if (saved && data.profiles.find(p => p.key === saved)) sel.value = saved;
+                const activeKey = sel.value || data.activeProfile || '';
+                if (activeKey) localStorage.setItem('activeProfile', activeKey);
+            } catch (e) { console.warn('加载数据源失败', e); }
+        }
+
+        function switchDataSource(profileKey) {
+            if (!profileKey) return;
+            localStorage.setItem('activeProfile', profileKey);
+            currentPage = 1;
+            loadData();
+        }
+
+        async function getActiveProfile() {
+            let activeProfile = localStorage.getItem('activeProfile') || '';
+            if (activeProfile) return activeProfile;
+            try {
+                const res = await fetch('/api/settings/valid_profiles');
+                const data = await res.json();
+                if (data.success && data.activeProfile) { activeProfile = data.activeProfile; localStorage.setItem('activeProfile', activeProfile); }
+            } catch (e) {}
+            return activeProfile || document.getElementById('profileSelect').value || '';
+        }
+
+        async function loadData() {
+            document.getElementById('tableContainer').innerHTML = '<div class="loading"><div class="loading-spinner"></div>加载中...</div>';
+            const profile = await getActiveProfile();
+            try {
+                const res = await fetch('/api/algo-comm-log/list?page=' + currentPage + '&page_size=' + PAGE_SIZE + (profile ? '&profile=' + encodeURIComponent(profile) : ''));
+                const data = await res.json();
+                if (!data.success) { document.getElementById('tableContainer').innerHTML = '<div class="empty">❌ 加载失败：' + escHtml(data.error || '未知错误') + '</div>'; return; }
+                totalCount = data.total;
+                document.getElementById('totalInfo').textContent = '共 ' + totalCount + ' 条记录';
+                renderTable(data.rows);
+                document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+            } catch (e) { document.getElementById('tableContainer').innerHTML = '<div class="empty">❌ 请求异常：' + escHtml(e.message) + '</div>'; }
+        }
+
+        function renderTable(rows) {
+            if (!rows || rows.length === 0) { document.getElementById('tableContainer').innerHTML = '<div class="empty">暂无数据</div>'; return; }
+            _rowCache = {}; rows.forEach(r => { _rowCache[r.id] = r; });
+            let html = '<div class="table-wrap"><table><thead><tr>';
+            html += '<th>Trace ID</th><th>Task ID</th><th>模块</th><th>请求 URL</th><th>状态</th><th>失败类型</th><th>开始时间</th><th>结束时间</th><th>耗时(ms)</th><th>操作</th>';
+            html += '</tr></thead><tbody>';
+            rows.forEach((r, idx) => {
+                html += '<tr>';
+                html += '<td class="cell-mono">' + escHtml(r.trace_id || '-') + '</td>';
+                html += '<td>' + (r.task_id || '-') + '</td>';
+                html += '<td>' + escHtml(r.module_name || '-') + '</td>';
+                html += '<td class="cell-mono">' + escHtml(r.request_url || '-') + '</td>';
+                html += '<td>' + (r.response_status || '-') + '</td>';
+                html += '<td>' + escHtml(r.fail_type || '-') + '</td>';
+                html += '<td>' + (r.begin_time || '-') + '</td>';
+                html += '<td>' + (r.end_time || '-') + '</td>';
+                html += '<td>' + (r.duration_ms != null ? r.duration_ms.toLocaleString() : '-') + '</td>';
+                html += '<td><button class="view-btn" onclick="showReq(' + r.id + ')">请求</button><button class="view-btn" onclick="showRes(' + r.id + ')">响应</button></td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+            document.getElementById('tableContainer').innerHTML = html;
+        }
+
+        function showReq(id) { const row = _rowCache[id]; if (!row) return; showModal('请求 Body', row.request_body); }
+        function showRes(id) { const row = _rowCache[id]; if (!row) return; showModal('响应 Body', row.response_body); }
+
+        function showModal(title, data) {
+            let content = '';
+            try { content = JSON.stringify(JSON.parse(data), null, 2); } catch(e) { content = data || '-'; }
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalBody').innerHTML = '<pre>' + escHtml(content) + '</pre>';
+            document.getElementById('detailModal').classList.add('show');
+        }
+        function hideModal() { document.getElementById('detailModal').classList.remove('show'); }
+        function closeModal(e) { if (e.target === document.getElementById('detailModal')) hideModal(); }
+
+        function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+        document.addEventListener('DOMContentLoaded', async () => { await initDataSourceSelector(); await loadData(); });
+    </script>
+</body>
+</html>"""
+
+
+@app.route('/algo-comm-log')
+def algo_comm_log_page():
+    return render_template_string(ALGO_COMM_LOG_TEMPLATE)
+
+
+@app.route('/api/algo-comm-log/list')
+def api_algo_comm_log_list():
+    try:
+        profile = request.args.get('profile')
+        page = max(1, int(request.args.get('page', 1)))
+        page_size = min(100, max(1, int(request.args.get('page_size', 20))))
+        offset = (page - 1) * page_size
+
+        # 查总数
+        count_sql = "SELECT COUNT(*) AS cnt FROM v_algorithm_request_log WHERE deleted = 0"
+        count_rows = query_db(count_sql, profile=profile)
+        total = count_rows[0]['cnt'] if count_rows else 0
+
+        # 查数据
+        data_sql = """SELECT id, trace_id, task_id, module_name, module_path, request_url, response_status,
+               fail_type, error_name, error_message, begin_time, end_time, duration_ms,
+               request_body, response_body
+        FROM v_algorithm_request_log WHERE deleted = 0 ORDER BY begin_time DESC LIMIT %s OFFSET %s"""
+        data_rows = query_db(data_sql, (page_size, offset), profile=profile)
+
+        from datetime import datetime
+        def fmt(v):
+            if v is None: return None
+            if isinstance(v, datetime): return v.strftime('%Y-%m-%d %H:%M:%S')
+            return str(v)
+
+        result = []
+        for r in data_rows:
+            result.append({
+                'id': r['id'],
+                'trace_id': r['trace_id'],
+                'task_id': r['task_id'],
+                'module_name': r['module_name'],
+                'module_path': r['module_path'],
+                'request_url': r['request_url'],
+                'response_status': r['response_status'],
+                'fail_type': r['fail_type'],
+                'error_name': r['error_name'],
+                'error_message': r['error_message'],
+                'begin_time': fmt(r['begin_time']),
+                'end_time': fmt(r['end_time']),
+                'duration_ms': r['duration_ms'],
+                'request_body': r['request_body'],
+                'response_body': r['response_body'],
+            })
+
+        return jsonify({'success': True, 'total': total, 'rows': result})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

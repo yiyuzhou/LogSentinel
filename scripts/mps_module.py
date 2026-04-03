@@ -113,6 +113,12 @@ MPS_LIST_TEMPLATE = """
         ::-webkit-scrollbar-track { background: var(--bg-dark); }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); }
+        .top-navbar { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); padding: 12px 30px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+        .navbar-left { display: flex; align-items: center; gap: 16px; }
+        .navbar-label { color: rgba(255,255,255,0.8); font-size: 13px; font-weight: 500; }
+        .navbar-select { padding: 8px 14px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; color: white; font-size: 14px; min-width: 180px; cursor: pointer; transition: all 0.2s; }
+        .navbar-select:hover { background: rgba(255,255,255,0.25); }
+        .navbar-select option { background: var(--bg-card); color: var(--text-primary); }
     </style>
 </head>
 <body>
@@ -131,8 +137,10 @@ MPS_LIST_TEMPLATE = """
                 <span class="icon">🐧</span>
                 <span class="label">腾讯 MPS</span>
             </a>
+            <div class="menu-section" style="margin-top: 20px;">日志管理</div>
+            <a href="/algo-comm-log" class="menu-item" data-page="algo-comm-log"><span class="icon">🔬</span><span class="label">算法通讯日志</span></a>
             <div class="menu-section" style="margin-top: 20px;">系统监控</div>
-            <a href="/logs" class="menu-item" data-page="logs"><span class="icon">📋</span><span class="label">日志监控</span></a><a href="/server-monitor" class="menu-item" data-page="server-monitor"><span class="icon">🖥️</span><span class="label">服务器监控</span></a><a href="/db-monitor" class="menu-item" data-page="db-monitor"><span class="icon">🗄️</span><span class="label">数据库监控</span></a><div class="menu-section" style="margin-top: 20px;">系统</div><a href="/settings" class="menu-item" data-page="settings"><span class="icon">⚙️</span><span class="label">系统设置</span></a></nav>
+            <a href="/logs" class="menu-item" data-page="logs"><span class="icon">📋</span><span class="label">日志监控</span></a><a href="/server-monitor" class="menu-item" data-page="server-monitor"><span class="icon">🖥️</span><span class="label">服务器监控</span></a><a href="/db-monitor" class="menu-item" data-page="db-monitor"><span class="icon">🗄️</span><span class="label">数据库监控</span></a><div class="menu-section" style="margin-top: 20px;">系统</div><a href="/settings" class="menu-item" data-page="settings"><span class="icon">⚙️</span><span class="label">系统设置</span></a><a href="/dict-config" class="menu-item" data-page="dict-config"><span class="icon">📚</span><span class="label">字典配置</span></a></nav>
         <div class="sidebar-footer">
             <div class="sidebar-status">
                 <span class="status-dot"></span>
@@ -142,6 +150,14 @@ MPS_LIST_TEMPLATE = """
         </div>
     </aside>
     <div class="main-wrapper" id="mainWrapper">
+        <div class="top-navbar">
+            <div class="navbar-left">
+                <span class="navbar-label">数据源：</span>
+                <select id="globalDataSource" class="navbar-select" onchange="switchDataSource()">
+                    <option value="">加载中...</option>
+                </select>
+            </div>
+        </div>
         <div class="main-content">
             <div id="statsContent"></div>
             <div class="toolbar">
@@ -419,7 +435,51 @@ MPS_LIST_TEMPLATE = """
             });
         }
         
-        document.addEventListener('DOMContentLoaded', function() { loadData(); setupSidebarToggle(); });
+        async function initDataSourceSelector() {
+            try {
+                const res = await fetch('/api/settings/valid_profiles');
+                const data = await res.json();
+                if (!data.success) return;
+                const select = document.getElementById('globalDataSource');
+                select.innerHTML = '';
+                data.profiles.forEach(p => {
+                    const option = document.createElement('option');
+                    option.value = p.key;
+                    option.textContent = p.name;
+                    if (p.active) option.selected = true;
+                    select.appendChild(option);
+                });
+                localStorage.setItem('activeProfile', data.activeProfile);
+            } catch (err) {
+                console.error('初始化数据源选择器失败:', err);
+            }
+        }
+
+        async function switchDataSource() {
+            const select = document.getElementById('globalDataSource');
+            const newProfile = select.value;
+            const currentProfile = localStorage.getItem('activeProfile') || '';
+            if (newProfile === currentProfile) return;
+            try {
+                const res = await fetch('/api/settings/switch_profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ profile: newProfile })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    localStorage.setItem('activeProfile', newProfile);
+                    loadData();
+                } else {
+                    alert('切换失败：' + (data.error || '未知错误'));
+                    initDataSourceSelector();
+                }
+            } catch (err) {
+                alert('切换失败：' + err.message);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() { initDataSourceSelector(); loadData(); setupSidebarToggle(); });
     </script>
 </body>
 </html>
@@ -529,8 +589,10 @@ MPS_DETAIL_TEMPLATE = """
                 <span class="icon">🐧</span>
                 <span class="label">腾讯 MPS</span>
             </a>
+            <div class="menu-section" style="margin-top: 20px;">日志管理</div>
+            <a href="/algo-comm-log" class="menu-item" data-page="algo-comm-log"><span class="icon">🔬</span><span class="label">算法通讯日志</span></a>
             <div class="menu-section" style="margin-top: 20px;">系统监控</div>
-            <a href="/logs" class="menu-item" data-page="logs"><span class="icon">📋</span><span class="label">日志监控</span></a><a href="/server-monitor" class="menu-item" data-page="server-monitor"><span class="icon">🖥️</span><span class="label">服务器监控</span></a><a href="/db-monitor" class="menu-item" data-page="db-monitor"><span class="icon">🗄️</span><span class="label">数据库监控</span></a><div class="menu-section" style="margin-top: 20px;">系统</div><a href="/settings" class="menu-item" data-page="settings"><span class="icon">⚙️</span><span class="label">系统设置</span></a></nav>
+            <a href="/logs" class="menu-item" data-page="logs"><span class="icon">📋</span><span class="label">日志监控</span></a><a href="/server-monitor" class="menu-item" data-page="server-monitor"><span class="icon">🖥️</span><span class="label">服务器监控</span></a><a href="/db-monitor" class="menu-item" data-page="db-monitor"><span class="icon">🗄️</span><span class="label">数据库监控</span></a><div class="menu-section" style="margin-top: 20px;">系统</div><a href="/settings" class="menu-item" data-page="settings"><span class="icon">⚙️</span><span class="label">系统设置</span></a><a href="/dict-config" class="menu-item" data-page="dict-config"><span class="icon">📚</span><span class="label">字典配置</span></a></nav>
         <div class="sidebar-footer">
             <div class="sidebar-status">
                 <span class="status-dot"></span>

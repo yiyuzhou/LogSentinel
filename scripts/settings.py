@@ -516,7 +516,7 @@ def test_db_monitor_connection(db_monitor_config):
         
         # 测试是否能访问 information_schema
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM tables")
+        cursor.execute("SELECT COUNT(*) FROM information_schema.tables")
         count = cursor.fetchone()[0]
         cursor.close()
         conn.close()
@@ -693,6 +693,8 @@ SETTINGS_TEMPLATE = """
                 <span class="icon">🐧</span>
                 <span class="label">腾讯 MPS</span>
             </a>
+            <div class="menu-section" style="margin-top: 20px;">日志管理</div>
+            <a href="/algo-comm-log" class="menu-item" data-page="algo-comm-log"><span class="icon">🔬</span><span class="label">算法通讯日志</span></a>
             <div class="menu-section" style="margin-top: 20px;">系统监控</div>
             <a href="/logs" class="menu-item" data-page="logs">
                 <span class="icon">📋</span>
@@ -710,6 +712,10 @@ SETTINGS_TEMPLATE = """
             <a href="/settings" class="menu-item active" data-page="settings">
                 <span class="icon">⚙️</span>
                 <span class="label">系统设置</span>
+            </a>
+            <a href="/dict-config" class="menu-item" data-page="dict-config">
+                <span class="icon">📚</span>
+                <span class="label">字典配置</span>
             </a>
         </nav>
         <div class="sidebar-footer">
@@ -744,20 +750,20 @@ SETTINGS_TEMPLATE = """
                         <h2>配置详情</h2>
                         <p>当前配置：<span id="currentProfileName">默认配置</span></p>
                     </div>
-                    
-                    <!-- 配置选择器（移到详情区顶部） -->
+
+                    <!-- 隐藏的 profileSelect 用于内部逻辑 -->
+                    <select id="profileSelect" style="display:none;">
+                        <option value="default">默认配置</option>
+                    </select>
+
+                    <!-- 配置操作按钮 -->
                     <div class="profile-selector" style="margin-bottom: 20px;">
-                        <label>切换配置：</label>
-                        <select id="profileSelect" onchange="switchProfile()">
-                            <option value="default">默认配置</option>
-                        </select>
                         <div class="profile-actions">
-                            <button class="btn btn-secondary" onclick="deleteProfile()" id="deleteProfileBtn" disabled>🗑️ 删除配置</button>
                             <button class="btn btn-primary" onclick="saveSettings()">💾 保存配置</button>
                             <button class="btn btn-secondary" onclick="loadSettings()">🔄 重置</button>
                         </div>
                     </div>
-                    
+
                     <!-- 视频任务数据源（内部译制 & 腾讯 MPS 共用） -->
             <div class="settings-card">
                 <h2>🎬 视频任务数据源 <span style="font-size:12px;color:var(--text-secondary);font-weight:normal;margin-left:10px;">（内部译制 & 腾讯 MPS 共用）</span></h2>
@@ -783,7 +789,7 @@ SETTINGS_TEMPLATE = """
                 </div>
                 <div class="form-group">
                     <label>密码</label>
-                    <input type="password" id="videoPassword" placeholder="请输入数据库密码">
+                    <input type="text" id="videoPassword" placeholder="请输入数据库密码（明文显示）">
                 </div>
                 <div class="form-actions">
                     <button class="btn btn-success" onclick="testVideoConnection()">🔌 测试连接</button>
@@ -849,7 +855,7 @@ SETTINGS_TEMPLATE = """
                 </div>
                 <div class="form-group">
                     <label>密码</label>
-                    <input type="password" id="dbMonitorPassword" placeholder="请输入数据库密码">
+                    <input type="text" id="dbMonitorPassword" placeholder="请输入数据库密码（明文显示）">
                 </div>
                 <div class="form-actions">
                     <button class="btn btn-success" onclick="testDbMonitorConnection()">🔌 测试连接</button>
@@ -897,6 +903,37 @@ SETTINGS_TEMPLATE = """
     <script>
         let currentConfig = null;
         let profiles = {};
+        const DB_MONITOR_PLAIN_PASSWORDS_KEY = 'dbMonitorPlainPasswords';
+        const VIDEO_PLAIN_PASSWORDS_KEY = 'videoPlainPasswords';
+
+        function _getPlainPasswordMap(key) {
+            try {
+                const raw = localStorage.getItem(key);
+                return raw ? JSON.parse(raw) : {};
+            } catch (err) {
+                return {};
+            }
+        }
+
+        function _setPlainPassword(key, profileName, password) {
+            const passwordMap = _getPlainPasswordMap(key);
+            if (password) {
+                passwordMap[profileName] = password;
+            } else {
+                delete passwordMap[profileName];
+            }
+            localStorage.setItem(key, JSON.stringify(passwordMap));
+        }
+
+        function _getPlainPassword(key, profileName) {
+            return _getPlainPasswordMap(key)[profileName] || '';
+        }
+
+        function setDbMonitorPlainPassword(profileName, password) { _setPlainPassword(DB_MONITOR_PLAIN_PASSWORDS_KEY, profileName, password); }
+        function getDbMonitorPlainPassword(profileName) { return _getPlainPassword(DB_MONITOR_PLAIN_PASSWORDS_KEY, profileName); }
+
+        function setVideoPlainPassword(profileName, password) { _setPlainPassword(VIDEO_PLAIN_PASSWORDS_KEY, profileName, password); }
+        function getVideoPlainPassword(profileName) { return _getPlainPassword(VIDEO_PLAIN_PASSWORDS_KEY, profileName); }
         
         // 渲染左侧配置列表
         function renderConfigList() {
@@ -1003,9 +1040,7 @@ SETTINGS_TEMPLATE = """
                 if (profileSelect.value !== activeProfile) {
                     console.error('[loadSettings] 警告：选中值设置失败，期望:', activeProfile, '实际:', profileSelect.value);
                 }
-                
-                document.getElementById('deleteProfileBtn').disabled = Object.keys(profiles).length <= 1;
-                
+
                 // 渲染左侧配置列表
                 renderConfigList();
                 
@@ -1070,7 +1105,7 @@ SETTINGS_TEMPLATE = """
                 videoPortEl.value = video.port || 3306;
                 videoDatabaseEl.value = video.database || '';
                 videoUserEl.value = video.user || '';
-                videoPasswordEl.value = ''; // 密码不回填
+                videoPasswordEl.value = getVideoPlainPassword(profileName);
                 console.log('[loadProfileData] video 配置已加载:', video.host);
                 
                 // 填充 SSH 配置（从 profile 中获取）
@@ -1114,7 +1149,7 @@ SETTINGS_TEMPLATE = """
                 dbMonitorPortEl.value = dbMonitorConfig.port || 3306;
                 dbMonitorDatabaseEl.value = dbMonitorConfig.database || '';
                 dbMonitorUserEl.value = dbMonitorConfig.user || '';
-                dbMonitorPasswordEl.value = ''; // 密码不回填
+                dbMonitorPasswordEl.value = getDbMonitorPlainPassword(profileName);
                 console.log('[loadProfileData] 数据库监控配置已加载:', dbMonitorConfig.host);
                 
                 // 填充服务器数据源配置
@@ -1286,18 +1321,14 @@ SETTINGS_TEMPLATE = """
                 currentConfig.profiles = profiles;
                 currentConfig.activeProfile = 'default';
                 profileSelect.value = 'default';
-                
                 // 重新渲染列表
                 renderConfigList();
-                
-                // 更新删除按钮状态
-                document.getElementById('deleteProfileBtn').disabled = Object.keys(profiles).length <= 1;
-                
+
                 saveSettings();
                 showToast(`已删除配置：${profileDisplayName}`, 'success');
             }
         }
-        
+
         function deleteProfile() {
             const profileName = document.getElementById('profileSelect').value;
             if (profileName === 'default') {
@@ -1437,9 +1468,10 @@ SETTINGS_TEMPLATE = """
                 btn.textContent = '🔌 测试连接';
             }
         }
-        
+
         async function saveSettings() {
-            const activeProfile = document.getElementById('profileSelect').value;
+            // 保持当前的 active_profile 不变
+            const activeProfile = currentConfig?.activeProfile || currentConfig?.active_profile || 'default';
             const config = {
                 activeProfile: activeProfile,
                 active_profile: activeProfile,
@@ -1456,6 +1488,7 @@ SETTINGS_TEMPLATE = """
             if (currentProfile) {
                 // 保存视频任务数据源配置
                 const videoPassword = document.getElementById('videoPassword').value;
+                setVideoPlainPassword(activeProfile, videoPassword || getVideoPlainPassword(activeProfile));
                 currentProfile.video = {
                     host: document.getElementById('videoHost').value,
                     port: parseInt(document.getElementById('videoPort').value) || 3306,
@@ -1483,6 +1516,7 @@ SETTINGS_TEMPLATE = """
                     user: document.getElementById('dbMonitorUser').value,
                     password: dbMonitorPassword ? btoa(dbMonitorPassword) : (currentProfile.db_monitor?.password || '')
                 };
+                setDbMonitorPlainPassword(activeProfile, dbMonitorPassword || getDbMonitorPlainPassword(activeProfile));
                 
                 // 保存服务器数据源配置到同一个 profile
                 const serverDataSourcePassword = document.getElementById('serverDataSourcePassword').value;
@@ -1580,11 +1614,496 @@ SETTINGS_TEMPLATE = """
 # Flask 路由
 def create_settings_routes(app):
     """创建设置路由"""
-    
+
     @app.route('/settings')
     def settings_page():
         return render_template_string(SETTINGS_TEMPLATE)
-    
+
+    # 字典配置模板
+    DICT_CONFIG_TEMPLATE = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>字典配置 - 视频任务运维系统</title>
+    <style>
+        :root { --primary: #2563eb; --primary-dark: #1d4ed8; --success: #059669; --warning: #d97706; --danger: #dc2626; --info: #7c3aed; --bg-dark: #0f172a; --bg-card: #1e293b; --bg-hover: #334155; --text-primary: #f1f5f9; --text-secondary: #94a3b8; --border: #334155; --sidebar-width: 240px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', 'Segoe UI', Arial, sans-serif; background: var(--bg-dark); min-height: 100vh; color: var(--text-primary); display: flex; }
+        .sidebar { width: var(--sidebar-width); background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); border-right: 1px solid var(--border); min-height: 100vh; position: fixed; left: 0; top: 0; display: flex; flex-direction: column; }
+        .sidebar-logo { padding: 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+        .sidebar-logo .logo-icon { width: 40px; height: 40px; background: linear-gradient(135deg, var(--primary) 0%, var(--info) 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+        .sidebar-logo h1 { color: var(--text-primary); font-size: 18px; font-weight: 600; }
+        .navbar-version { font-size: 11px; color: var(--text-secondary); }
+        .sidebar-menu { flex: 1; padding: 16px 0; overflow-y: auto; }
+        .menu-section { padding: 8px 20px 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); }
+        .menu-item { display: flex; align-items: center; gap: 12px; padding: 10px 20px; color: var(--text-secondary); text-decoration: none; transition: background 0.15s; }
+        .menu-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .menu-item.active { background: rgba(37, 99, 235, 0.15); color: var(--primary); border-right: 3px solid var(--primary); }
+        .menu-item .icon { font-size: 18px; width: 24px; text-align: center; }
+        .menu-item .label { font-size: 14px; }
+        .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); }
+        .sidebar-status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+        .status-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; }
+        .main-wrapper { margin-left: var(--sidebar-width); flex: 1; padding: 24px; }
+        .page-header { margin-bottom: 20px; }
+        .page-header h1 { font-size: 22px; font-weight: 600; }
+        .page-header p { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+        .dict-container { display: flex; gap: 20px; height: calc(100vh - 150px); }
+        .dict-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; }
+        .dict-panel-left { width: 350px; flex-shrink: 0; }
+        .dict-panel-right { flex: 1; }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+        .panel-header h2 { font-size: 15px; font-weight: 600; }
+        .panel-body { flex: 1; overflow-y: auto; padding: 10px; }
+        .dict-item { padding: 10px 14px; border-radius: 6px; cursor: pointer; margin-bottom: 4px; transition: background 0.15s; }
+        .dict-item:hover { background: var(--bg-hover); }
+        .dict-item.active { background: rgba(37, 99, 235, 0.2); color: var(--primary); }
+        .dict-item-name { font-size: 14px; font-weight: 500; }
+        .dict-item-meta { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+        .btn { padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; }
+        .btn-primary { background: var(--primary); color: #fff; }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-secondary { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border); }
+        .btn-danger { background: var(--danger); color: #fff; }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        thead th { background: rgba(51,65,85,0.5); padding: 10px 14px; text-align: left; font-weight: 600; color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
+        tbody td { padding: 10px 14px; border-top: 1px solid var(--border); }
+        tbody tr:hover { background: var(--bg-hover); }
+        .empty { text-align: center; padding: 40px; color: var(--text-secondary); }
+        .loading { text-align: center; padding: 40px; color: var(--text-secondary); }
+        .form-row { display: flex; gap: 12px; margin-bottom: 12px; }
+        .form-group { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+        .form-group label { font-size: 12px; color: var(--text-secondary); }
+        .form-input { background: var(--bg-dark); border: 1px solid var(--border); color: var(--text-primary); padding: 6px 10px; border-radius: 6px; font-size: 13px; }
+        .form-input:focus { outline: none; border-color: var(--primary); }
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.show { display: flex; }
+        .modal-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; max-width: 500px; width: 95%; }
+        .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+        .modal-head h3 { font-size: 15px; font-weight: 600; }
+        .modal-close { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 20px; }
+        .modal-body { padding: 20px; }
+        .modal-foot { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
+        .top-navbar { background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 10px 24px; display: flex; align-items: center; gap: 16px; }
+        .navbar-label { font-size: 13px; color: var(--text-secondary); }
+        .navbar-select { background: var(--bg-dark); border: 1px solid var(--border); color: var(--text-primary); padding: 5px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <div class="logo-icon">📊</div>
+            <div><h1>运维系统</h1><div class="navbar-version">v1.0.0 by yiyuzhou</div></div>
+        </div>
+        <nav class="sidebar-menu">
+            <div class="menu-section">任务管理</div>
+            <a href="/" class="menu-item" data-page="internal"><span class="icon">🎬</span><span class="label">内部译制</span></a>
+            <a href="/mps" class="menu-item" data-page="mps"><span class="icon">🐧</span><span class="label">腾讯 MPS</span></a>
+            <div class="menu-section" style="margin-top: 20px;">日志管理</div>
+            <a href="/algo-comm-log" class="menu-item" data-page="algo-comm-log"><span class="icon">🔬</span><span class="label">算法通讯日志</span></a>
+            <div class="menu-section" style="margin-top: 20px;">系统监控</div>
+            <a href="/logs" class="menu-item" data-page="logs"><span class="icon">📋</span><span class="label">日志监控</span></a>
+            <a href="/server-monitor" class="menu-item" data-page="server-monitor"><span class="icon">🖥️</span><span class="label">服务器监控</span></a>
+            <a href="/db-monitor" class="menu-item" data-page="db-monitor"><span class="icon">🗄️</span><span class="label">数据库监控</span></a>
+            <div class="menu-section" style="margin-top: 20px;">系统</div>
+            <a href="/settings" class="menu-item" data-page="settings"><span class="icon">⚙️</span><span class="label">系统设置</span></a>
+            <a href="/dict-config" class="menu-item active" data-page="dict-config"><span class="icon">📚</span><span class="label">字典配置</span></a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="sidebar-status"><span class="status-dot"></span><span>系统运行正常</span></div>
+        </div>
+    </aside>
+
+    <div class="main-wrapper">
+        <div class="top-navbar">
+            <span class="navbar-label">当前环境：</span>
+            <select class="navbar-select" id="profileSelect" onchange="switchProfile()"><option value="">加载中...</option></select>
+        </div>
+
+        <div class="page-header">
+            <h1>📚 字典配置</h1>
+            <p>管理系统字典类型和字典数据</p>
+        </div>
+
+        <div class="dict-container">
+            <div class="dict-panel dict-panel-left">
+                <div class="panel-header">
+                    <h2>字典类型</h2>
+                    <button class="btn btn-primary btn-sm" onclick="openTypeModal()">+ 新增</button>
+                </div>
+                <div style="padding:10px 14px;border-bottom:1px solid var(--border);">
+                    <input type="text" class="form-input" id="typeKeyword" placeholder="搜索名称/类型" style="width:100%;" oninput="searchTypes(this.value)">
+                </div>
+                <div class="panel-body" id="typeList">
+                    <div class="loading">加载中...</div>
+                </div>
+            </div>
+            <div class="dict-panel dict-panel-right">
+                <div class="panel-header">
+                    <h2>字典数据 <span id="currentTypeName" style="font-weight:normal;font-size:13px;color:var(--text-secondary)"></span></h2>
+                    <div style="display:flex;gap:8px;">
+                        <input type="text" class="form-input" id="dataKeyword" placeholder="搜索标签/值" style="width:140px;" oninput="searchData()">
+                        <button class="btn btn-primary btn-sm" id="addDataBtn" onclick="openDataModal()" disabled>+ 新增</button>
+                    </div>
+                </div>
+                <div class="panel-body" id="dataList">
+                    <div class="empty">请先选择左侧字典类型</div>
+                </div>
+                <div id="dataPagination" style="border-top:1px solid var(--border);"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 字典类型弹窗 -->
+    <div class="modal-overlay" id="typeModal">
+        <div class="modal-box">
+            <div class="modal-head">
+                <h3 id="typeModalTitle">新增字典类型</h3>
+                <button class="modal-close" onclick="closeModal('typeModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="typeId">
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label>名称</label>
+                    <input type="text" class="form-input" id="typeName" placeholder="请输入名称">
+                </div>
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label>类型</label>
+                    <input type="text" class="form-input" id="typeCode" placeholder="请输入类型编码">
+                </div>
+                <div class="form-group">
+                    <label>状态</label>
+                    <select class="form-input" id="typeStatus">
+                        <option value="0">启用</option>
+                        <option value="1">禁用</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-secondary" onclick="closeModal('typeModal')">取消</button>
+                <button class="btn btn-primary" onclick="saveType()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 字典数据弹窗 -->
+    <div class="modal-overlay" id="dataModal">
+        <div class="modal-box">
+            <div class="modal-head">
+                <h3 id="dataModalTitle">新增字典数据</h3>
+                <button class="modal-close" onclick="closeModal('dataModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="dataId">
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label>标签</label>
+                    <input type="text" class="form-input" id="dataLabel" placeholder="请输入标签">
+                </div>
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label>值</label>
+                    <input type="text" class="form-input" id="dataValue" placeholder="请输入值">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>排序</label>
+                        <input type="number" class="form-input" id="dataSort" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>状态</label>
+                        <select class="form-input" id="dataStatus">
+                            <option value="0">启用</option>
+                            <option value="1">禁用</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-secondary" onclick="closeModal('dataModal')">取消</button>
+                <button class="btn btn-primary" onclick="saveData()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedTypeId = null;
+        let typeList = [];
+
+        async function init() {
+            await loadProfiles();
+            loadTypes();
+        }
+
+        async function loadProfiles() {
+            try {
+                const res = await fetch('/api/settings/valid_profiles');
+                const data = await res.json();
+                if (!data.success) return;
+                const sel = document.getElementById('profileSelect');
+                sel.innerHTML = '';
+                data.profiles.forEach(p => { const opt = document.createElement('option'); opt.value = p.key; opt.textContent = p.name; if (p.active) opt.selected = true; sel.appendChild(opt); });
+                const saved = localStorage.getItem('activeProfile');
+                if (saved && data.profiles.find(p => p.key === saved)) sel.value = saved;
+                if (sel.value) localStorage.setItem('activeProfile', sel.value);
+            } catch (e) { console.warn('加载数据源失败', e); }
+        }
+
+        function switchProfile() {
+            const profile = document.getElementById('profileSelect').value;
+            if (profile) localStorage.setItem('activeProfile', profile);
+            loadTypes();
+        }
+
+        function getProfile() {
+            return localStorage.getItem('activeProfile') || '';
+        }
+
+        let typeKeyword = '';
+        let dataKeyword = '';
+        let dataPage = 1;
+        let dataTotal = 0;
+
+        async function loadTypes() {
+            const profile = getProfile();
+            let url = '/api/settings/dict-types';
+            if (profile) url += '?profile=' + encodeURIComponent(profile);
+            if (typeKeyword) url += (profile ? '&' : '?') + 'keyword=' + encodeURIComponent(typeKeyword);
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                if (!data.success) { document.getElementById('typeList').innerHTML = '<div class="empty">加载失败: ' + data.error + '</div>'; return; }
+                typeList = data.rows || [];
+                renderTypeList();
+            } catch (e) { document.getElementById('typeList').innerHTML = '<div class="empty">加载失败</div>'; }
+        }
+
+        function searchTypes(kw) { typeKeyword = kw; loadTypes(); }
+        function searchData() { dataKeyword = document.getElementById('dataKeyword').value; dataPage = 1; loadData(); }
+
+        function renderTypeList() {
+            const container = document.getElementById('typeList');
+            if (typeList.length === 0) { container.innerHTML = '<div class="empty">暂无数据</div>'; return; }
+            let html = '';
+            typeList.forEach(t => {
+                const active = t.id === selectedTypeId ? 'active' : '';
+                const statusBadge = t.status === 0 ? '<span style="color:#10b981;margin-left:8px;">●</span>' : '<span style="color:#6b7280;margin-left:8px;">●</span>';
+                html += '<div class="dict-item ' + active + '" onclick="selectType(' + t.id + ')">';
+                html += '<div class="dict-item-name">' + escHtml(t.name || t.type) + statusBadge + '</div>';
+                html += '<div class="dict-item-meta">' + escHtml(t.type || '') + ' | ' + (t.create_time || '-') + '</div>';
+                html += '<div style="margin-top:8px;display:flex;gap:6px;">';
+                html += '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();editType(' + t.id + ')">编辑</button>';
+                html += '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteType(' + t.id + ')">删除</button>';
+                html += '</div></div>';
+            });
+            container.innerHTML = html;
+        }
+
+        function editType(id) { openTypeModal(id); }
+
+        async function selectType(id) {
+            selectedTypeId = id;
+            renderTypeList();
+            document.getElementById('addDataBtn').disabled = false;
+            const t = typeList.find(x => x.id === id);
+            document.getElementById('currentTypeName').textContent = t ? '- ' + escHtml(t.name || t.type) : '';
+            loadData();
+        }
+
+        async function loadData() {
+            if (!selectedTypeId) return;
+            const profile = getProfile();
+            let url = '/api/settings/dict-data?type_id=' + selectedTypeId + '&page=' + dataPage + '&page_size=20';
+            if (profile) url += '&profile=' + encodeURIComponent(profile);
+            if (dataKeyword) url += '&keyword=' + encodeURIComponent(dataKeyword);
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                if (!data.success) { document.getElementById('dataList').innerHTML = '<div class="empty">加载失败</div>'; return; }
+                dataTotal = data.total || 0;
+                renderData(data.rows || []);
+                renderDataPagination();
+            } catch (e) { document.getElementById('dataList').innerHTML = '<div class="empty">加载失败</div>'; }
+        }
+
+        function renderDataPagination() {
+            const totalPages = Math.ceil(dataTotal / 20);
+            let html = '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--border);">';
+            html += '<span style="font-size:13px;color:var(--text-secondary);">共 ' + dataTotal + ' 条</span>';
+            html += '<div style="display:flex;gap:6px;">';
+            html += '<button class="btn btn-secondary btn-sm" onclick="dataPage=1;loadData()" ' + (dataPage <= 1 ? 'disabled' : '') + '>首页</button>';
+            html += '<button class="btn btn-secondary btn-sm" onclick="dataPage--;loadData()" ' + (dataPage <= 1 ? 'disabled' : '') + '>上一页</button>';
+            html += '<span style="padding:4px 10px;font-size:13px;">' + dataPage + '/' + totalPages + '</span>';
+            html += '<button class="btn btn-secondary btn-sm" onclick="dataPage++;loadData()" ' + (dataPage >= totalPages ? 'disabled' : '') + '>下一页</button>';
+            html += '<button class="btn btn-secondary btn-sm" onclick="dataPage=totalPages;loadData()" ' + (dataPage >= totalPages ? 'disabled' : '') + '>末页</button>';
+            html += '</div></div>';
+            document.getElementById('dataPagination').innerHTML = html;
+        }
+
+        function renderData(rows) {
+            const container = document.getElementById('dataList');
+            if (rows.length === 0) {
+                container.innerHTML = '<div class="empty">暂无数据</div>';
+                return;
+            }
+            let html = '<div class="table-wrap"><table><thead><tr><th>标签</th><th>值</th><th>排序</th><th>状态</th><th>操作</th></tr></thead><tbody>';
+            rows.forEach(d => {
+                const statusBadge = d.status === 0 ? '<span style="color:#10b981">启用</span>' : '<span style="color:#6b7280">禁用</span>';
+                html += '<tr>';
+                html += '<td>' + escHtml(d.label || '') + '</td>';
+                html += '<td>' + escHtml(d.value || '') + '</td>';
+                html += '<td>' + (d.sort || 0) + '</td>';
+                html += '<td>' + statusBadge + '</td>';
+                html += '<td><button class="btn btn-secondary btn-sm" onclick="editData(' + d.id + ')">编辑</button> <button class="btn btn-danger btn-sm" onclick="deleteData(' + d.id + ')">删除</button></td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        }
+
+        function openTypeModal(id) {
+            document.getElementById('typeModal').classList.add('show');
+            document.getElementById('typeModalTitle').textContent = id ? '编辑字典类型' : '新增字典类型';
+            document.getElementById('typeId').value = id || '';
+            if (id) {
+                const t = typeList.find(x => x.id === id);
+                if (t) {
+                    document.getElementById('typeName').value = t.name || '';
+                    document.getElementById('typeCode').value = t.type || '';
+                    document.getElementById('typeStatus').value = t.status || 1;
+                }
+            } else {
+                document.getElementById('typeName').value = '';
+                document.getElementById('typeCode').value = '';
+                document.getElementById('typeStatus').value = 1;
+            }
+        }
+
+        async function saveType() {
+            const id = document.getElementById('typeId').value;
+            const name = document.getElementById('typeName').value;
+            const type = document.getElementById('typeCode').value;
+            const status = document.getElementById('typeStatus').value;
+            if (!name) { alert('请输入名称'); return; }
+            if (!type) { alert('请输入类型'); return; }
+
+            const profile = getProfile();
+            const res = await fetch('/api/settings/dict-type', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id: id || null, name, type, status: parseInt(status), profile})
+            });
+            const data = await res.json();
+            if (data.success) {
+                closeModal('typeModal');
+                loadTypes();
+            } else {
+                alert('保存失败: ' + data.error);
+            }
+        }
+
+        async function deleteType(id) {
+            if (!confirm('确定要删除此字典类型吗？')) return;
+            const profile = getProfile();
+            const res = await fetch('/api/settings/dict-type', {
+                method: 'DELETE',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id, profile})
+            });
+            const data = await res.json();
+            if (data.success) {
+                if (selectedTypeId === id) selectedTypeId = null;
+                loadTypes();
+            } else {
+                alert('删除失败: ' + data.error);
+            }
+        }
+
+        function openDataModal(id) {
+            document.getElementById('dataModal').classList.add('show');
+            document.getElementById('dataModalTitle').textContent = id ? '编辑字典数据' : '新增字典数据';
+            document.getElementById('dataId').value = id || '';
+            if (id) {
+                // 获取当前数据
+                const profile = getProfile();
+                fetch('/api/settings/dict-data?type_id=' + selectedTypeId + (profile ? '&profile=' + encodeURIComponent(profile) : ''))
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success) {
+                            const d = (data.rows || []).find(x => x.id === id);
+                            if (d) {
+                                document.getElementById('dataLabel').value = d.label || '';
+                                document.getElementById('dataValue').value = d.value || '';
+                                document.getElementById('dataSort').value = d.sort || 0;
+                                document.getElementById('dataStatus').value = d.status || 1;
+                            }
+                        }
+                    });
+            } else {
+                document.getElementById('dataLabel').value = '';
+                document.getElementById('dataValue').value = '';
+                document.getElementById('dataSort').value = 0;
+                document.getElementById('dataStatus').value = 0;
+            }
+        }
+
+        async function saveData() {
+            const id = document.getElementById('dataId').value;
+            const label = document.getElementById('dataLabel').value;
+            const value = document.getElementById('dataValue').value;
+            const sort = document.getElementById('dataSort').value;
+            const status = document.getElementById('dataStatus').value;
+            const currentType = typeList.find(x => x.id === selectedTypeId);
+            const dict_type = currentType ? currentType.type : '';
+            if (!label) { alert('请输入标签'); return; }
+            if (!value) { alert('请输入值'); return; }
+
+            const profile = getProfile();
+            const res = await fetch('/api/settings/dict-data', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id: id || null, type_id: selectedTypeId, dict_type, label, value, sort: parseInt(sort), status: parseInt(status), profile})
+            });
+            const data = await res.json();
+            if (data.success) {
+                closeModal('dataModal');
+                loadData();
+            } else {
+                alert('保存失败: ' + data.error);
+            }
+        }
+
+        async function deleteData(id) {
+            if (!confirm('确定要删除此字典数据吗？')) return;
+            const profile = getProfile();
+            const res = await fetch('/api/settings/dict-data', {
+                method: 'DELETE',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id, profile})
+            });
+            const data = await res.json();
+            if (data.success) {
+                loadData();
+            } else {
+                alert('删除失败: ' + data.error);
+            }
+        }
+
+        function editData(id) { openDataModal(id); }
+
+        function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+        function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+        init();
+    </script>
+</body>
+</html>"""
+
+    @app.route('/dict-config')
+    def dict_config_page():
+        return render_template_string(DICT_CONFIG_TEMPLATE)
+
     @app.route('/api/settings/config')
     def api_get_config():
         """获取配置"""
@@ -1653,7 +2172,30 @@ def create_settings_routes(app):
             })
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
+    @app.route('/api/settings/valid_profiles')
+    def api_get_valid_profiles():
+        """获取数据源列表（返回系统设置中所有已配置的环境）"""
+        try:
+            config = load_config()
+            valid_profiles = []
+            active_profile = config.get('active_profile', 'default')
+
+            for name, profile in config.get('profiles', {}).items():
+                valid_profiles.append({
+                    'key': name,
+                    'name': profile.get('name', name),
+                    'active': name == active_profile
+                })
+
+            return jsonify({
+                'success': True,
+                'profiles': valid_profiles,
+                'activeProfile': active_profile
+            })
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route('/api/settings/save', methods=['POST'])
     def api_save_config():
         """保存配置"""
@@ -1675,7 +2217,37 @@ def create_settings_routes(app):
             return jsonify({'success': True, 'activeProfile': config.get('active_profile', 'default')})
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
+    @app.route('/api/settings/switch_profile', methods=['POST'])
+    def api_switch_profile():
+        """切换当前激活的数据源"""
+        try:
+            data = request.json
+            new_profile = data.get('profile', 'default')
+
+            config = load_config()
+
+            # 检查目标 profile 是否存在且有效
+            profile = config.get('profiles', {}).get(new_profile)
+            if not profile:
+                return jsonify({'success': False, 'error': '数据源不存在'}), 400
+
+            video = profile.get('video', {})
+            if not (video.get('host') and video.get('database') and video.get('user')):
+                return jsonify({'success': False, 'error': '数据源配置不完整'}), 400
+
+            # 切换数据源
+            config['active_profile'] = new_profile
+            save_config(config)
+
+            return jsonify({
+                'success': True,
+                'activeProfile': new_profile,
+                'profileName': profile.get('name', new_profile)
+            })
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route('/api/settings/test_video', methods=['POST'])
     def api_test_video():
         """测试视频任务数据库连接"""
@@ -1745,6 +2317,205 @@ def create_settings_routes(app):
             return jsonify(result)
         except Exception as e:
             return jsonify({'success': False, 'message': str(e)}), 500
+
+    # ========== 字典配置 API ==========
+    def _get_db_config_for_dict(profile_name=None):
+        """获取字典配置的数据库连接参数"""
+        config = get_video_db_config_for_profile(profile_name)
+        if not config:
+            # 使用默认配置
+            return {
+                'host': '101.126.91.130',
+                'port': 4005,
+                'database': 'videoai',
+                'user': 'yiyuzhou',
+                'password': 'yiyuzhou5066995',
+                'charset': 'utf8mb4',
+                'connect_timeout': 5
+            }
+        return {
+            'host': config.get('host'),
+            'port': config.get('port', 3306),
+            'database': config.get('database', 'videoai'),
+            'user': config.get('user'),
+            'password': config.get('password', ''),
+            'charset': 'utf8mb4',
+            'connect_timeout': 5
+        }
+
+    def _query_dict_db(sql, params=None, profile_name=None):
+        """执行字典配置的数据库查询"""
+        db_config = _get_db_config_for_dict(profile_name)
+        conn = mysql.connector.connect(**db_config)
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(sql, params or ())
+            rows = cursor.fetchall()
+            cursor.close()
+            return rows
+        finally:
+            conn.close()
+
+    @app.route('/api/settings/dict-types')
+    def api_dict_types():
+        """获取字典类型列表"""
+        try:
+            profile = request.args.get('profile')
+            keyword = request.args.get('keyword', '').strip()
+
+            sql = "SELECT id, name, type, status, create_time FROM videoai.system_dict_type WHERE deleted = 0"
+            params = []
+            if keyword:
+                sql += " AND (name LIKE %s OR type LIKE %s)"
+                params = ['%' + keyword + '%', '%' + keyword + '%']
+            sql += " ORDER BY id DESC"
+
+            rows = _query_dict_db(sql, tuple(params) if params else None, profile_name=profile)
+            return jsonify({'success': True, 'rows': rows})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/api/settings/dict-data')
+    def api_dict_data():
+        """获取字典数据列表（支持搜索和分页）"""
+        try:
+            profile = request.args.get('profile')
+            type_id = request.args.get('type_id')
+            keyword = request.args.get('keyword', '').strip()
+            page = max(1, int(request.args.get('page', 1)))
+            page_size = min(100, max(1, int(request.args.get('page_size', 20))))
+
+            if not type_id:
+                return jsonify({'success': False, 'error': '缺少 type_id 参数'}), 400
+
+            # 条件
+            where_clauses = ["deleted = 0", "type_id = %s"]
+            params = [type_id]
+            if keyword:
+                where_clauses.append("(label LIKE %s OR value LIKE %s)")
+                params.extend(['%' + keyword + '%', '%' + keyword + '%'])
+
+            where_sql = " AND ".join(where_clauses)
+
+            # 总数
+            count_sql = f"SELECT COUNT(*) as cnt FROM videoai.system_dict_data WHERE {where_sql}"
+            count_rows = _query_dict_db(count_sql, tuple(params), profile_name=profile)
+            total = count_rows[0]['cnt'] if count_rows else 0
+
+            # 数据
+            offset = (page - 1) * page_size
+            data_sql = f"SELECT id, label, value, status, dict_type, sort FROM videoai.system_dict_data WHERE {where_sql} ORDER BY sort ASC LIMIT {page_size} OFFSET {offset}"
+            rows = _query_dict_db(data_sql, tuple(params), profile_name=profile)
+
+            return jsonify({'success': True, 'rows': rows, 'total': total, 'page': page, 'page_size': page_size})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/api/settings/dict-type', methods=['POST'])
+    def api_save_dict_type():
+        """新增/编辑字典类型"""
+        try:
+            data = request.json
+            profile = data.get('profile')
+            dict_id = data.get('id')
+            name = data.get('name')
+            dict_type = data.get('type')
+            status = data.get('status', 1)
+
+            db_config = _get_db_config_for_dict(profile)
+            conn = mysql.connector.connect(**db_config)
+            cursor = conn.cursor()
+            try:
+                if dict_id:
+                    sql = "UPDATE videoai.system_dict_type SET name=%s, type=%s, status=%s, update_time=NOW(), version=version+1 WHERE id=%s"
+                    cursor.execute(sql, (name, dict_type, status, dict_id))
+                else:
+                    sql = "INSERT INTO videoai.system_dict_type (name, type, status, deleted, create_time, update_time, version) VALUES (%s, %s, %s, 0, NOW(), NOW(), 1)"
+                    cursor.execute(sql, (name, dict_type, status))
+                conn.commit()
+                return jsonify({'success': True})
+            finally:
+                cursor.close()
+                conn.close()
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/api/settings/dict-type', methods=['DELETE'])
+    def api_delete_dict_type():
+        """删除字典类型"""
+        try:
+            data = request.json
+            profile = data.get('profile')
+            dict_id = data.get('id')
+
+            db_config = _get_db_config_for_dict(profile)
+            conn = mysql.connector.connect(**db_config)
+            cursor = conn.cursor()
+            try:
+                # 软删除
+                cursor.execute("UPDATE videoai.system_dict_type SET deleted=1 WHERE id=%s", (dict_id,))
+                # 同时删除关联的字典数据
+                cursor.execute("UPDATE videoai.system_dict_data SET deleted=1 WHERE type_id=%s", (dict_id,))
+                conn.commit()
+                return jsonify({'success': True})
+            finally:
+                cursor.close()
+                conn.close()
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/api/settings/dict-data', methods=['POST'])
+    def api_save_dict_data():
+        """新增/编辑字典数据"""
+        try:
+            data = request.json
+            profile = data.get('profile')
+            dict_id = data.get('id')
+            type_id = data.get('type_id')
+            dict_type = data.get('dict_type')
+            label = data.get('label')
+            value = data.get('value')
+            status = data.get('status', 0)
+            sort = data.get('sort', 0)
+
+            db_config = _get_db_config_for_dict(profile)
+            conn = mysql.connector.connect(**db_config)
+            cursor = conn.cursor()
+            try:
+                if dict_id:
+                    sql = "UPDATE videoai.system_dict_data SET type_id=%s, dict_type=%s, label=%s, value=%s, status=%s, sort=%s, update_time=NOW(), version=version+1 WHERE id=%s"
+                    cursor.execute(sql, (type_id, dict_type, label, value, status, sort, dict_id))
+                else:
+                    sql = "INSERT INTO videoai.system_dict_data (type_id, dict_type, label, value, status, sort, deleted, create_time, update_time, version) VALUES (%s, %s, %s, %s, %s, %s, 0, NOW(), NOW(), 1)"
+                    cursor.execute(sql, (type_id, dict_type, label, value, status, sort))
+                conn.commit()
+                return jsonify({'success': True})
+            finally:
+                cursor.close()
+                conn.close()
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/api/settings/dict-data', methods=['DELETE'])
+    def api_delete_dict_data():
+        """删除字典数据"""
+        try:
+            data = request.json
+            profile = data.get('profile')
+            dict_id = data.get('id')
+
+            db_config = _get_db_config_for_dict(profile)
+            conn = mysql.connector.connect(**db_config)
+            cursor = conn.cursor()
+            try:
+                cursor.execute("UPDATE videoai.system_dict_data SET deleted=1 WHERE id=%s", (dict_id,))
+                conn.commit()
+                return jsonify({'success': True})
+            finally:
+                cursor.close()
+                conn.close()
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # 初始化时自动加载配置

@@ -6,7 +6,29 @@
       "Bash(curl:*)",
       "Bash(tasklist:*)",
       "Bash(powershell -Command \"Get-Process -Id 27784 | Select-Object ProcessName, Path\")",
-      "Bash(powershell -Command \"Stop-Process -Id 27784 -Force\")"
+      "Bash(powershell -Command \"Stop-Process -Id 27784 -Force\")",
+      "Bash(powershell -Command \"Stop-Process -Id 13868 -Force\")",
+      "Bash(powershell -Command \"Get-Process python | Select-Object Id, ProcessName, StartTime\")",
+      "Bash(powershell -Command \"Stop-Process -Id 19768 -Force\")",
+      "Bash(python -c \":*)",
+      "Bash(powershell -Command 'Stop-Process -Id 31416,22348 -Force')",
+      "Bash(powershell -Command \"Stop-Process -Id 24656 -Force\")",
+      "Bash(powershell -Command \"Stop-Process -Id 40764 -Force\")",
+      "Bash(grep -n \"menu-section\" \"D:\\\\.openclaw\\\\agents\\\\weather-bot\\\\workspace\\\\export\\\\video-task-system\\\\scripts\"/*.py)",
+      "Bash(powershell -Command \"Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force\")",
+      "Bash(cmd /c stop.bat)",
+      "Bash(taskkill:*)",
+      "Bash(python video_task_dashboard.py)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('success:', d.get\\('success'\\)\\); print\\('total:', d.get\\('total'\\)\\)\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('success:', d.get\\('success'\\), '| total:', d.get\\('total'\\)\\)\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d['rows'][0] if d.get\\('rows'\\) else {}, indent=2, ensure_ascii=False\\)\\)\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('success:', d.get\\('success'\\)\\)\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('success:', d.get\\('success'\\), '| processing:', len\\(d.get\\('processing', []\\)\\), '| completed:', len\\(d.get\\('completed', []\\)\\)\\)\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('success:', d.get\\('success'\\)\\); print\\('task:', d.get\\('task'\\)\\)\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('success:', d.get\\('success'\\), '| logs:', len\\(d.get\\('logs', []\\)\\)\\)\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('success:', d.get\\('success'\\), '| rows:', len\\(d.get\\('rows', []\\)\\)\\)\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('success:', d.get\\('success'\\), '| error:', d.get\\('error', ''\\)\\)\")",
+      "Bash(./restart.bat:*)"
     ]
   }
 }

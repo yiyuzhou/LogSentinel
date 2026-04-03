@@ -220,20 +220,27 @@ SERVER_MONITOR_TEMPLATE = """
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Microsoft YaHei', 'Segoe UI', Arial, sans-serif; background: var(--bg-dark); min-height: 100vh; color: var(--text-primary); display: flex; }
-        .sidebar { width: var(--sidebar-width); background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); border-right: 1px solid var(--border); min-height: 100vh; position: fixed; left: 0; top: 0; display: flex; flex-direction: column; }
+        .sidebar { width: var(--sidebar-width); background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); border-right: 1px solid var(--border); min-height: 100vh; position: fixed; left: 0; top: 0; display: flex; flex-direction: column; transition: width 0.3s ease; overflow: hidden; }
+        .sidebar.collapsed { width: 64px; }
         .sidebar-logo { padding: 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
-        .sidebar-logo .logo-icon { width: 40px; height: 40px; background: linear-gradient(135deg, var(--primary) 0%, var(--info) 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
-        .sidebar-logo h1 { color: var(--text-primary); font-size: 18px; font-weight: 600; }
+        .sidebar-logo .logo-icon { width: 40px; height: 40px; background: linear-gradient(135deg, var(--primary) 0%, var(--info) 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+        .sidebar-logo h1 { color: var(--text-primary); font-size: 18px; font-weight: 600; white-space: nowrap; transition: opacity 0.2s; }
+        .sidebar.collapsed .sidebar-logo h1 { opacity: 0; }
         .navbar-version { font-size: 11px; color: var(--text-secondary); margin-top: 4px; white-space: nowrap; transition: opacity 0.2s; }
+        .sidebar.collapsed .navbar-version { opacity: 0; }
+        .sidebar-toggle { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px; margin-left: auto; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 6px; transition: background 0.2s, color 0.2s; }
+        .sidebar-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
         .sidebar-menu { flex: 1; padding: 16px 12px; }
-        .menu-section { color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 12px; margin-bottom: 8px; margin-top: 8px; }
+        .sidebar.collapsed .menu-section, .sidebar.collapsed .label { opacity: 0; width: 0; overflow: hidden; }
+        .menu-section { color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 12px; margin-bottom: 8px; margin-top: 8px; transition: opacity 0.2s; }
         .menu-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 8px; color: var(--text-secondary); text-decoration: none; transition: all 0.2s; margin-bottom: 4px; cursor: pointer; }
         .menu-item:hover { background: var(--bg-hover); color: var(--text-primary); }
         .menu-item.active { background: linear-gradient(135deg, rgba(37, 99, 235, 0.2) 0%, rgba(29, 78, 216, 0.1) 100%); color: var(--primary); border: 1px solid rgba(37, 99, 235, 0.3); }
-        .menu-item .icon { font-size: 18px; width: 24px; text-align: center; }
-        .menu-item .label { flex: 1; font-size: 14px; font-weight: 500; }
+        .menu-item .icon { font-size: 18px; width: 24px; text-align: center; flex-shrink: 0; }
+        .menu-item .label { flex: 1; font-size: 14px; font-weight: 500; white-space: nowrap; transition: opacity 0.2s; }
         .menu-badge { background: var(--danger); color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-        .main-wrapper { flex: 1; margin-left: var(--sidebar-width); min-height: 100vh; display: flex; flex-direction: column; }
+        .main-wrapper { flex: 1; margin-left: var(--sidebar-width); min-height: 100vh; display: flex; flex-direction: column; transition: margin-left 0.3s ease; }
+        .main-wrapper.expanded { margin-left: 64px; }
         .main-content { padding: 24px 30px; flex: 1; }
         .page-header { margin-bottom: 24px; }
         .page-header h1 { font-size: 24px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 12px; }
@@ -293,8 +300,11 @@ SERVER_MONITOR_TEMPLATE = """
     </style>
 </head>
 <body>
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
         <div class="sidebar-logo"><div class="logo-icon">📊</div><div><h1>运维系统</h1><div class="navbar-version">v1.0.0 by yiyuzhou</div></div>
+            <button class="sidebar-toggle" id="sidebarToggle" title="收起/展开菜单">
+                <svg id="toggleIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </button>
         </div>
         <nav class="sidebar-menu">
             <div class="menu-section">任务管理</div>
@@ -306,6 +316,8 @@ SERVER_MONITOR_TEMPLATE = """
                 <span class="icon">🐧</span>
                 <span class="label">腾讯 MPS</span>
             </a>
+            <div class="menu-section" style="margin-top: 20px;">日志管理</div>
+            <a href="/algo-comm-log" class="menu-item" data-page="algo-comm-log"><span class="icon">🔬</span><span class="label">算法通讯日志</span></a>
             <div class="menu-section" style="margin-top: 20px;">系统监控</div>
             <a href="/logs" class="menu-item" data-page="logs">
                 <span class="icon">📋</span>
@@ -324,9 +336,13 @@ SERVER_MONITOR_TEMPLATE = """
                 <span class="icon">⚙️</span>
                 <span class="label">系统设置</span>
             </a>
+            <a href="/dict-config" class="menu-item" data-page="dict-config">
+                <span class="icon">📚</span>
+                <span class="label">字典配置</span>
+            </a>
         </nav>
     </aside>
-    <div class="main-wrapper">
+    <div class="main-wrapper" id="mainWrapper">
         <div class="main-content">
             <div class="page-header">
                 <h1>🖥️ 服务器监控</h1>
@@ -451,6 +467,28 @@ SERVER_MONITOR_TEMPLATE = """
         </div>
     </div>
     <script>
+        // ======== 侧边栏折叠 ========
+        const sidebar = document.getElementById('sidebar');
+        const mainWrapper = document.getElementById('mainWrapper');
+        document.getElementById('sidebarToggle').addEventListener('click', () => {
+            sidebar.classList.toggle('collapsed');
+            mainWrapper.classList.toggle('expanded');
+            const icon = document.getElementById('toggleIcon');
+            if (sidebar.classList.contains('collapsed')) {
+                icon.innerHTML = '<polyline points="9 18 15 12 9 6"></polyline>';
+                localStorage.setItem('sidebarCollapsed', 'true');
+            } else {
+                icon.innerHTML = '<polyline points="15 18 9 12 15 6"></polyline>';
+                localStorage.setItem('sidebarCollapsed', 'false');
+            }
+        });
+        // 恢复侧边栏状态
+        if (localStorage.getItem('sidebarCollapsed') === 'true') {
+            sidebar.classList.add('collapsed');
+            mainWrapper.classList.add('expanded');
+            document.getElementById('toggleIcon').innerHTML = '<polyline points="9 18 15 12 9 6"></polyline>';
+        }
+
         Chart.defaults.color = '#94a3b8';
         Chart.defaults.borderColor = '#334155';
         let cpuChart, memoryChart, diskChart, networkChart;
