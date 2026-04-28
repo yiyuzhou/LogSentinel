@@ -14,11 +14,12 @@ import json
 import math
 from mps_module import MPS_LIST_TEMPLATE, MPS_DETAIL_TEMPLATE
 from log_viewer import LOG_VIEWER_TEMPLATE, list_log_files, get_log_content, get_new_log_lines, get_log_stats, download_log_file, validate_log_file
-from settings import create_settings_routes, init_db_config, get_video_db_config
+from settings import create_settings_routes, init_db_config, get_video_db_config, load_config
 from server_monitor import register_server_monitor_routes, start_data_collection
 from db_monitor import register_db_monitor_routes
 
 app = Flask(__name__)
+app.secret_key = 'video-task-system-secret-key-2024'
 CORS(app)
 
 # Favicon 路由 - 避免浏览器请求 404 错误
@@ -467,6 +468,7 @@ LIST_TEMPLATE = """
     <script>
         const PAGE_SIZE = 10;
         let allData = { processing: [], completed: [] };
+        let isProdEnv = false; // 当前是否为生产环境
         let filteredData = { processing: [], completed: [] };
         let currentPage = { processing: 1, completed: 1, all: 1 };
         let autoRefreshTimer = null;
@@ -603,11 +605,27 @@ LIST_TEMPLATE = """
             let html = '';
             const allColumns = [
                 { title: 'taskId', field: 'id' },
-                { title: '剧名', field: 'name', format: v => truncate(v, 25) },
+                { title: '任务名称', field: 'name', format: v => truncate(v, 25) },
+                { title: '所属剧集', field: 'series_name', format: v => truncate(v || '-', 20) },
+                { title: '语言', field: 'lang_code', format: v => v || '-' },
                 { title: '类型', field: 'task_type', format: formatType },
                 { title: '推理状态', field: 'status', format: formatStatus },
                 { title: '创建时间', field: 'create_time', format: formatTime },
-                { title: '操作', field: 'id', format: (v, row) => '<a href="/task_detail?id=' + v + '" class="detail-btn" target="_blank">📄 查看详情</a>' }
+                { title: '操作', field: 'id', format: (v, row) => {
+                    let btns = '<a href="/task_detail?id=' + v + '" class="detail-btn" target="_blank">📄 详情</a>';
+                    if (row.file_url) {
+                        const prefix = isProdEnv ? 'https://prod-1321001571.tos-cn-guangzhou.volces.com/' : 'http://dev-1321001571.tos-cn-guangzhou.volces.com/';
+                        const downloadUrl = prefix + row.file_url;
+                        btns += ' <a href="' + downloadUrl + '" class="detail-btn" target="_blank">⬇️ 原视频</a>';
+                    }
+                    // 译后视频：仅已完成(status=2)且有result_url时显示
+                    if (row.status == 2 && row.result_url) {
+                        const prefix = isProdEnv ? 'https://prod-1321001571.tos-cn-guangzhou.volces.com/' : 'http://dev-1321001571.tos-cn-guangzhou.volces.com/';
+                        const resultUrl = prefix + row.result_url;
+                        btns += ' <a href="' + resultUrl + '" class="detail-btn" target="_blank">⬇️ 译后视频</a>';
+                    }
+                    return btns;
+                } }
             ];
             // 合并所有任务并按创建时间倒序
             const allTasks = [...filteredData.processing, ...filteredData.completed].sort((a, b) => {
@@ -712,6 +730,7 @@ LIST_TEMPLATE = """
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || 'Unknown error');
                 allData = { stats: data.stats, processing: data.processing || [], completed: data.completed || [] };
+                isProdEnv = data.is_prod || false;
                 
                 // 渲染统计卡片
                 const stats = data.stats || {};
@@ -1138,7 +1157,8 @@ DETAIL_TEMPLATE = """
                 const task = data.task;
                 const logs = data.logs || [];
 
-                let html = '<div class="task-info"><h2>📌 任务基本信息</h2><div class="info-grid">';
+                let html = '<div style="text-align:right;margin-bottom:10px;"><button onclick="loadDetail()" class="detail-btn">🔄 刷新</button></div>';
+                html += '<div class="task-info"><h2>📌 任务基本信息</h2><div class="info-grid">';
                 html += '<div class="info-item"><label>Task ID</label><div class="value">' + task.id + '</div></div>';
                 html += '<div class="info-item"><label>剧名</label><div class="value">' + (task.name || '-') + '</div></div>';
                 html += '<div class="info-item"><label>类型</label><div class="value">' + (task.task_type || '-') + '</div></div>';
@@ -1257,16 +1277,24 @@ def get_data():
         today = query_db(today_sql, profile=profile)[0]
         stats['today_total'] = today['today_total'] or 0
         
-        processing_sql = """SELECT id, name, task_type, status, create_time 
-        FROM v_episode_task WHERE deleted = 0 AND status != 2 ORDER BY create_time DESC LIMIT 500"""
+        processing_sql = """SELECT t.id, t.name, t.task_type, t.status, t.create_time, s.name as series_name, t.file_url,
+            COALESCE(d.label, t.lang_code) as lang_code
+        FROM v_episode_task t
+        LEFT JOIN v_series s ON t.series_id = s.id
+        LEFT JOIN system_dict_data d ON d.dict_type = 'erp_language' AND CAST(d.value AS CHAR) = CAST(t.lang_code AS CHAR)
+        WHERE t.deleted = 0 AND t.status != 2 ORDER BY t.create_time DESC LIMIT 500"""
         processing = query_db(processing_sql, profile=profile)
         # Python 格式化时间
         for task in processing:
             if task.get('create_time'):
                 task['create_time'] = format_rfc_time(task['create_time'])
-        
-        completed_sql = """SELECT id, name, task_type, status, create_time 
-        FROM v_episode_task WHERE deleted = 0 AND status = 2 ORDER BY create_time DESC LIMIT 200"""
+
+        completed_sql = """SELECT t.id, t.name, t.task_type, t.status, t.create_time, s.name as series_name, t.file_url, t.result_url,
+            COALESCE(d.label, t.lang_code) as lang_code
+        FROM v_episode_task t
+        LEFT JOIN v_series s ON t.series_id = s.id
+        LEFT JOIN system_dict_data d ON d.dict_type = 'erp_language' AND CAST(d.value AS CHAR) = CAST(t.lang_code AS CHAR)
+        WHERE t.deleted = 0 AND t.status = 2 ORDER BY t.create_time DESC LIMIT 200"""
         completed = query_db(completed_sql, profile=profile)
         # Python 格式化时间
         for task in completed:
@@ -1275,8 +1303,15 @@ def get_data():
         
         elapsed = (datetime.now() - start).total_seconds()
         print(f"API /api/data response in {elapsed:.2f}s", file=sys.stderr)
-        
-        return jsonify({'success': True, 'stats': stats, 'processing': processing, 'completed': completed, 'timestamp': datetime.now().isoformat()})
+
+        # 获取当前环境信息
+        config = load_config()
+        active_profile = config.get('active_profile', 'default')
+        profile_data = config.get('profiles', {}).get(active_profile, {})
+        profile_name = profile_data.get('name', '')
+        is_prod = 'prod' in profile_name.lower()
+
+        return jsonify({'success': True, 'stats': stats, 'processing': processing, 'completed': completed, 'timestamp': datetime.now().isoformat(), 'is_prod': is_prod})
     except Exception as e:
         print(f"API /api/data error: {e}", file=sys.stderr)
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1349,8 +1384,11 @@ def get_mps_data():
         stats['today'] = today['today'] or 0
         
         # 任务列表
-        data_sql = """SELECT id as task_id, episode_name, subtitle_extract_type, cos_status, create_time 
-        FROM videoai.v_fast_translate_series_item WHERE deleted = 0 ORDER BY create_time DESC LIMIT 500"""
+        data_sql = """SELECT t.id as task_id, t.episode_name, t.subtitle_extract_type, t.cos_status, t.create_time, t.tos_url, t.cos_url,
+            COALESCE(d.label, t.target_lang_code) as target_lang_code
+        FROM videoai.v_fast_translate_series_item t
+        LEFT JOIN system_dict_data d ON d.dict_type = 'erp_language' AND CAST(d.value AS CHAR) = CAST(t.target_lang_code AS CHAR)
+        WHERE t.deleted = 0 ORDER BY t.create_time DESC LIMIT 500"""
         data = query_db(data_sql, profile=profile)
         
         # 格式化时间

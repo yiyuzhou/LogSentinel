@@ -28,7 +28,9 @@
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('success:', d.get\\('success'\\), '| logs:', len\\(d.get\\('logs', []\\)\\)\\)\")",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('success:', d.get\\('success'\\), '| rows:', len\\(d.get\\('rows', []\\)\\)\\)\")",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('success:', d.get\\('success'\\), '| error:', d.get\\('error', ''\\)\\)\")",
-      "Bash(./restart.bat:*)"
+      "Bash(./restart.bat:*)",
+      "Read(//d D:/.openclaw/agents/weather-bot/workspace/export/**)",
+      "Bash(restart.bat)"
     ]
   }
 }

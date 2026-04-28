@@ -1614,10 +1614,86 @@ SETTINGS_TEMPLATE = """
 # Flask 路由
 def create_settings_routes(app):
     """创建设置路由"""
+    # 密码验证（写死：5066995）
+    ADMIN_PASSWORD = "5066995"
+
+    @app.route('/api/settings/verify_password', methods=['POST'])
+    def api_verify_password():
+        """验证管理密码"""
+        try:
+            data = request.json
+            password = data.get('password', '')
+            if password == ADMIN_PASSWORD:
+                # 验证成功，设置 session
+                from flask import session
+                session['admin_verified'] = True
+                return jsonify({'success': True})
+            else:
+                return jsonify({'success': False, 'error': '密码错误'})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/api/settings/check_verified', methods=['GET'])
+    def api_check_verified():
+        """检查是否已验证"""
+        from flask import session
+        return jsonify({'verified': session.get('admin_verified', False)})
+
+    def check_admin_session():
+        """检查 session 是否已验证"""
+        from flask import session
+        return session.get('admin_verified', False)
 
     @app.route('/settings')
     def settings_page():
+        from flask import session
+        if not check_admin_session():
+            # 返回密码输入页面
+            return render_template_string(PASSWORD_TEMPLATE)
         return render_template_string(SETTINGS_TEMPLATE)
+
+    # 密码输入模板（内嵌在 settings.py 中）
+    PASSWORD_TEMPLATE = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>验证密码 - 视频任务运维系统</title>
+    <style>
+        body { font-family: 'Microsoft YaHei', sans-serif; background: #0f172a; min-height: 100vh; display: flex; align-items: center; justify-content: center; color: #f1f5f9; }
+        .password-box { background: #1e293b; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); text-align: center; }
+        .password-box h2 { margin-bottom: 20px; }
+        .password-box input { width: 200px; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #f1f5f9; font-size: 16px; text-align: center; }
+        .password-box button { margin-top: 20px; padding: 12px 30px; border-radius: 6px; border: none; background: #2563eb; color: white; font-size: 16px; cursor: pointer; }
+        .password-box button:hover { background: #1d4ed8; }
+        .error { color: #dc2626; margin-top: 10px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="password-box">
+        <h2>请输入管理密码</h2>
+        <input type="password" id="password" placeholder="请输入密码" onkeydown="if(event.key==='Enter')verify()">
+        <br><button onclick="verify()">验证</button>
+        <div class="error" id="errorMsg">密码错误，请重试</div>
+    </div>
+    <script>
+        async function verify() {
+            const password = document.getElementById('password').value;
+            const res = await fetch('/api/settings/verify_password', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({password})
+            });
+            const data = await res.json();
+            if (data.success) {
+                window.location.href = '/settings';
+            } else {
+                document.getElementById('errorMsg').style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>"""
 
     # 字典配置模板
     DICT_CONFIG_TEMPLATE = """<!DOCTYPE html>
@@ -2102,6 +2178,8 @@ def create_settings_routes(app):
 
     @app.route('/dict-config')
     def dict_config_page():
+        if not check_admin_session():
+            return render_template_string(PASSWORD_TEMPLATE)
         return render_template_string(DICT_CONFIG_TEMPLATE)
 
     @app.route('/api/settings/config')

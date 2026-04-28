@@ -297,10 +297,21 @@ MPS_LIST_TEMPLATE = """
             const columns = [
                 { title: '任务 ID', field: 'task_id' },
                 { title: '剧集名', field: 'episode_name', format: v => truncate(v, 30) },
+                { title: '语言', field: 'target_lang_code', format: v => v || '-' },
                 { title: '提取方式', field: 'subtitle_extract_type', format: formatExtractType },
                 { title: 'COS 状态', field: 'cos_status', format: formatCosStatus },
                 { title: '创建时间', field: 'create_time', format: formatTime },
-                { title: '操作', field: 'task_id', format: v => '<a href="/mps_detail?id=' + v + '" class="detail-btn" target="_blank">📄 查看详情</a>' }
+                { title: '操作', field: 'task_id', format: (v, row) => {
+                    let btns = '<a href="/mps_detail?id=' + v + '" class="detail-btn" target="_blank">📄 详情</a>';
+                    if (row.tos_url) {
+                        btns += ' <a href="' + row.tos_url + '" class="detail-btn" target="_blank">⬇️ 原视频</a>';
+                    }
+                    // 译后视频：仅cos_status为FINISH且有cos_url时显示
+                    if (row.cos_url && row.cos_status && row.cos_status.toUpperCase() === 'FINISH') {
+                        btns += ' <a href="' + row.cos_url + '" class="detail-btn" target="_blank">⬇️ 译后视频</a>';
+                    }
+                    return btns;
+                } }
             ];
             
             let html = '<div class="table-section">';
